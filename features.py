@@ -450,7 +450,7 @@ def gomeria_camiones():
 def auditoria_pagos():
     _can_area("auditoria")
     q=request.args.get("q","").strip().casefold(); start=request.args.get("desde",""); end=request.args.get("hasta","")
-    modules=["pagos_diarios","prestamos_pagos","pagos_cuentas","gastos","cuentas_pagar","combustible_camion","gomeria_camiones","gomeria","fletes","planillas","solicitudes"]
+    modules=["pagos_diarios","prestamos_pagos","pagos_cuentas","gastos","combustible_camion","gomeria_camiones","gomeria","fletes","planillas","solicitudes"]
     rows=[]
     for mod in modules:
         for r in _rows(mod):
