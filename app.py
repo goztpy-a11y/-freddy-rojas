@@ -599,6 +599,14 @@ def module_page(module):
                 rec=Record(module=module,title=(data.get("beneficiario") or data.get("cliente") or data.get("concepto") or data.get("numero") or title)[:220],
                     data=json.dumps(data,ensure_ascii=False),amount=amount,status=status,created_by=current_user().id)
                 db.session.add(rec); db.session.flush(); log_action("crear cuenta / cheque",module,rec.id,rec.title)
+                if module=="cheques" and status=="Desembolsado":
+                    paydata={"modulo_origen":"cheques","registro_id":rec.id,"fecha":data.get("fecha",""),
+                        "beneficiario":data.get("beneficiario",""),"concepto":"Desembolso de cheque "+data.get("numero",""),
+                        "numero_cheque":data.get("numero",""),"importe":str(amount),"medio":"Cheque","detalle":"Desembolsado al registrar"}
+                    pay=Record(module="pagos_cuentas",title="Desembolso · "+rec.title,data=json.dumps(paydata,ensure_ascii=False),
+                        amount=amount,status="Desembolsado",created_by=current_user().id)
+                    db.session.add(pay); db.session.flush()
+                    log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title)
                 db.session.commit(); flash("Registro guardado.")
             except (InvalidOperation,ValueError):
                 db.session.rollback(); flash("Ingresá un importe válido mayor que cero.")
