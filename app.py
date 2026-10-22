@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-only-change-me")
+app.config["ADMIN_CONFIGURED"] = bool(os.environ.get("ADMIN_PASSWORD"))
 db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db")
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -209,7 +210,7 @@ def login():
         flash("Usuario o contraseña incorrectos.")
     return render_template_string(BASE + """
     <section class="card" style="max-width:430px;margin:35px auto"><h2>Iniciar sesión</h2>
-    {% if not config.get('ADMIN_PASSWORD') and not user %}<p class="warn">El administrador inicial se configura en Render mediante ADMIN_USERNAME y ADMIN_PASSWORD. No existe una contraseña pública predeterminada.</p>{% endif %}
+    {% if not config.get('ADMIN_CONFIGURED') and not user %}<p class="warn">El administrador inicial se configura en Render mediante ADMIN_USERNAME y ADMIN_PASSWORD. No existe una contraseña pública predeterminada.</p>{% endif %}
     <form method="post"><label>Usuario</label><input name="username" autocomplete="username" required>
     <label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required>
     <p><button class="btn" type="submit">Entrar</button></p></form></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Acceso")
@@ -265,7 +266,7 @@ def module_page(module):
         return render_template_string(BASE + """
         <section class="card"><h2>{{title}}</h2><p class="muted">Solo administración puede agregar materiales y cambiar precios. Los tickets conservan el precio aplicado.</p>
         <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
-        <section class="card"><h2>Materiales vigentes</h2><table><tr><th>Material</th><th>Precio</th><th>Unidad</th><th>Stock</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price}}</td><td>{{m.unit}}</td><td>{{m.stock}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title=title, fields=fields, items=items)
+        <section class="card"><h2>Materiales vigentes</h2><table><tr><th>Material</th><th>Precio</th><th>Unidad</th><th>Stock</th><th>Actualizar precio</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price}}</td><td>{{m.unit}}</td><td>{{m.stock}}</td><td><form method="post" action="{{url_for('update_material_price',mid=m.id)}}" class="actions"><input aria-label="Nuevo precio" name="precio" type="number" step="0.01" min="0" required><button class="btn">Guardar precio</button></form></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title=title, fields=fields, items=items)
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
@@ -333,6 +334,25 @@ def module_page(module):
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
     </section><section class="card"><h2>Historial reciente</h2>{% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th></tr>
     {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No hay registros todavía.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed)
+
+
+@app.post("/materiales/<int:mid>/precio")
+@admin_required
+def update_material_price(mid):
+    material = db.get_or_404(Material, mid)
+    try:
+        new_price = Decimal(request.form.get("precio","").replace(",","."))
+        if new_price < 0: raise InvalidOperation()
+    except (InvalidOperation, ValueError):
+        flash("El precio debe ser un número válido igual o mayor que cero.")
+        return redirect(url_for("module_page", module="materiales"))
+    old_price = material.price
+    material.price = new_price
+    log_action("cambio de precio de material", "materiales", material.id,
+               f"{material.name}: {old_price} -> {new_price}; precio nuevo solo para tickets futuros")
+    db.session.commit()
+    flash("Precio actualizado. Los tickets anteriores conservan su precio histórico.")
+    return redirect(url_for("module_page", module="materiales"))
 
 @app.get("/autorizaciones")
 @login_required
