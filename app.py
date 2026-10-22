@@ -177,18 +177,50 @@ def admin_required(fn):
 BASE = """
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ title }} · Freddy Rojas</title><style>
-:root{font-family:system-ui,Arial;color:#1c2833;background:#f2f5f7}*{box-sizing:border-box}body{margin:0}
-header{background:#173b57;color:white;padding:16px 20px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-header a{color:white}main{max-width:1100px;margin:22px auto;padding:0 14px}.card{background:white;border-radius:12px;padding:18px;margin-bottom:15px;box-shadow:0 2px 10px #0000000a}
-nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px}nav a,.btn{background:#e4edf3;color:#173b57;padding:9px 12px;border-radius:8px;text-decoration:none;border:0;display:inline-block;font-weight:600;cursor:pointer}
-input,select,textarea{width:100%;padding:10px;border:1px solid #c9d3db;border-radius:7px;font:inherit;background:white}label{display:block;font-size:.92rem;font-weight:600;margin:10px 0 5px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.muted{color:#61717e}.danger{color:#9e2a2b}.ok{color:#216e39}.warn{background:#fff5d8;padding:12px;border-radius:8px}
-table{width:100%;border-collapse:collapse;background:white}th,td{text-align:left;padding:9px;border-bottom:1px solid #e2e7eb;vertical-align:top;overflow-wrap:anywhere}th{background:#f4f7f9}
-.small{font-size:.85rem}.actions{display:flex;gap:8px;flex-wrap:wrap}button{font:inherit}footer{text-align:center;color:#667;padding:22px}.flash{background:#e7f5e9;padding:10px;border-radius:7px;margin:8px 0}
-</style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Gestión independiente del negocio</div></div>
-<div>{% if user %}{{ user.username }} · {{ AREAS.get(user.role,user.role) }} · <a href="{{ url_for('logout') }}">Salir</a>{% endif %}</div></header>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#182536;background:#f3f6fa;font-synthesis:none;text-rendering:optimizeLegibility}
+*{box-sizing:border-box}html{min-height:100%;background:#f3f6fa}body{margin:0;min-height:100vh;background:#f3f6fa;color:#182536;font-size:14px;line-height:1.5}
+a{color:#2459a9;text-decoration:none}a:hover{color:#153d7a;text-decoration:underline}
+header{position:fixed;z-index:30;top:0;left:258px;right:0;height:78px;background:#fff;color:#182536;padding:0 30px;display:flex;justify-content:space-between;gap:16px;align-items:center;border-bottom:1px solid #e3e9f1;box-shadow:0 3px 14px rgba(24,37,54,.035)}
+header>div:first-child{display:flex;align-items:center;gap:12px}header strong{font-size:18px;font-weight:750;letter-spacing:-.4px;color:#152b47}header .small{font-size:12px;color:#7a8798;margin-top:1px}header a{color:#2459a9;font-weight:650}
+.sidebar{position:fixed;z-index:40;inset:0 auto 0 0;width:258px;background:#142b46;color:#d8e3f2;padding:23px 15px 20px;overflow-y:auto;box-shadow:5px 0 22px rgba(17,35,57,.08)}
+.sidebar-brand{padding:5px 10px 24px;margin-bottom:17px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;gap:12px;align-items:center}
+.brand-mark{width:40px;height:40px;border-radius:12px;background:linear-gradient(145deg,#4e8ce7,#2860b5);display:grid;place-items:center;color:#fff;font-size:17px;font-weight:850;box-shadow:0 5px 13px #0b1d34}
+.brand-copy strong{display:block;color:white;font-size:15px;letter-spacing:.1px}.brand-copy span{display:block;color:#9fb3cc;font-size:11px;margin-top:2px}
+nav{display:flex;flex-direction:column;gap:5px;margin:0}
+nav a{display:flex;align-items:center;min-height:41px;padding:10px 12px;border-radius:8px;color:#c5d3e5;font-size:13px;font-weight:550;line-height:1.3;transition:background .15s,color .15s}
+nav a:hover{background:rgba(255,255,255,.08);color:white;text-decoration:none}
+nav a:first-child{margin-bottom:7px;background:rgba(83,139,220,.17);color:#fff}
+main{max-width:none;margin:0 0 0 258px;padding:106px 30px 34px;min-height:100vh}
+body:not(:has(.sidebar)) header{left:0}
+body:not(:has(.sidebar)) main{margin-left:0;max-width:1120px;margin-right:auto;padding:110px 20px 34px}
+.card{background:#fff;border:1px solid #e4eaf1;border-radius:13px;padding:22px;margin:0 0 18px;box-shadow:0 4px 16px rgba(25,45,72,.035)}
+h1,h2,h3,h4{color:#172d49;line-height:1.25;letter-spacing:-.35px}h2{font-size:21px;font-weight:750;margin:0 0 17px}h3{font-size:15px;font-weight:700;margin:0 0 10px}p{margin:8px 0 13px}.muted{color:#748297}.small{font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:15px}
+label{display:block;font-size:12px;color:#46566b;font-weight:700;margin:12px 0 6px;letter-spacing:.1px}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid #d6dee8;border-radius:8px;font:inherit;font-size:13px;color:#1c2d43;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{border-color:#4a82d4;box-shadow:0 0 0 3px rgba(63,124,211,.12)}
+input::placeholder,textarea::placeholder{color:#9aa7b7}
+button,.btn{background:#245bb0;color:#fff;padding:10px 15px;border-radius:8px;border:1px solid #245bb0;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;min-height:38px}
+button:hover,.btn:hover{background:#19478f;border-color:#19478f;color:white;text-decoration:none}
+button:active,.btn:active{transform:translateY(1px)}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.actions input{min-width:105px;max-width:180px}
+table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;font-size:13px}
+th,td{text-align:left;padding:12px 13px;border-bottom:1px solid #e9eef4;vertical-align:top;overflow-wrap:anywhere}
+th{background:#f5f8fc;color:#506078;font-size:11px;text-transform:uppercase;letter-spacing:.45px;font-weight:800;white-space:nowrap}
+tr:last-child td{border-bottom:0}tbody tr:hover td{background:#fafcff}
+.card:has(table){overflow-x:auto}
+.warn{background:#fff7e5;border:1px solid #f2dfb2;color:#79561a;padding:13px 15px;border-radius:9px}
+.danger{color:#b42332;font-weight:650}.ok{color:#19734a;font-weight:650}
+.flash{background:#eaf7ef;border:1px solid #ccebd7;color:#216a3c;padding:12px 15px;border-radius:9px;margin:0 0 16px;font-size:13px}
+footer{text-align:center;color:#8290a2;padding:24px 12px;font-size:11px}
+section.card>p:first-of-type{margin-top:0}
+@media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
+@media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
+</style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Sistema de gestión empresarial</div></div>
+<div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
+{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
+<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
-{% if user %}<nav><a href="{{url_for('index')}}">Inicio</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav>{% endif %}
 """
 
 @app.context_processor
