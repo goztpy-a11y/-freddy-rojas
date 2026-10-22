@@ -214,6 +214,9 @@ tr:last-child td{border-bottom:0}tbody tr:hover td{background:#fafcff}
 .flash{background:#eaf7ef;border:1px solid #ccebd7;color:#216a3c;padding:12px 15px;border-radius:9px;margin:0 0 16px;font-size:13px}
 footer{text-align:center;color:#8290a2;padding:24px 12px;font-size:11px}
 section.card>p:first-of-type{margin-top:0}
+/* Eliminar textos auxiliares pequeños en todas las pantallas; conservar etiquetas y avisos importantes */
+.muted,.small,.brand-copy span,footer{display:none!important}
+
 @media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
 </style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Sistema de gestión empresarial</div></div>
