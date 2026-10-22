@@ -10,6 +10,7 @@ MODULES.update({
     "prestamos": ("Préstamos", "caja", []),
     "prestamos_pagos": ("Pagos de préstamos", "caja", []),
     "pagos_cuentas": ("Movimientos de pagos", "tesoreria", []),
+    "cobros_cuentas": ("Cobros de cuentas por cobrar", "tesoreria", []),
     "proveedores": ("Proveedores y precios asignados", "caja", []),
     "planillas": ("Cuenta de proveedores", "caja", []),
     "fletes": ("Fletes", "caja", []),
