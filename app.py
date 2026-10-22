@@ -316,15 +316,55 @@ def module_page(module):
             if mat:
                 try: mat.stock += Decimal(data.get("cantidad","0").replace(",","."))
                 except InvalidOperation: pass
-        if module in ("ventas","movimientos_stock"):
-            if module=="ventas":
-                mat=Material.query.filter(db.func.lower(Material.name)==data.get("material","").lower()).first()
-                if mat:
-                    try: mat.stock -= Decimal(data.get("cantidad","0").replace(",","."))
-                    except InvalidOperation: pass
-            if module=="movimientos_stock" and data.get("tipo","").lower() in ("uso","salida"):
-                # Hydraulic spare parts remain traceable in this movement record.
-                pass
+        if module == "ventas":
+            mat=Material.query.filter(db.func.lower(Material.name)==data.get("material","").lower()).first()
+            if mat:
+                try:
+                    qty=Decimal(data.get("cantidad","0").replace(",","."))
+                    if qty <= 0 or mat.stock < qty:
+                        db.session.rollback()
+                        flash("La cantidad debe ser positiva y no puede superar el stock disponible.")
+                        return redirect(url_for("module_page",module=module))
+                    mat.stock -= qty
+                except InvalidOperation:
+                    db.session.rollback()
+                    flash("La cantidad de venta no es válida.")
+                    return redirect(url_for("module_page",module=module))
+        if module == "movimientos_stock":
+            try:
+                qty=Decimal(data.get("cantidad","0").replace(",","."))
+                if qty <= 0: raise InvalidOperation()
+            except InvalidOperation:
+                db.session.rollback()
+                flash("La cantidad del movimiento debe ser un número mayor que cero.")
+                return redirect(url_for("module_page",module=module))
+            spare_records=Record.query.filter_by(module="repuestos").order_by(Record.created_at.desc()).all()
+            spare_record=None
+            spare_data={}
+            for candidate in spare_records:
+                candidate_data=json.loads(candidate.data or "{}")
+                if candidate_data.get("nombre","").strip().casefold()==data.get("repuesto","").strip().casefold():
+                    spare_record=candidate
+                    spare_data=candidate_data
+                    break
+            movement=data.get("tipo","").strip().lower()
+            if spare_record and movement in ("uso","salida"):
+                try: available=Decimal(str(spare_data.get("stock","0")).replace(",","."))
+                except InvalidOperation: available=Decimal("0")
+                if available < qty:
+                    db.session.rollback()
+                    flash("Stock hidráulico insuficiente para ese movimiento.")
+                    return redirect(url_for("module_page",module=module))
+                spare_data["stock"]=str(available-qty)
+            elif spare_record and movement=="entrada":
+                try: available=Decimal(str(spare_data.get("stock","0")).replace(",","."))
+                except InvalidOperation: available=Decimal("0")
+                spare_data["stock"]=str(available+qty)
+            if spare_record and movement in ("uso","salida","entrada"):
+                spare_record.data=json.dumps(spare_data,ensure_ascii=False)
+                spare_record.updated_at=datetime.utcnow()
+                log_action("actualizar stock de repuesto hidráulico","repuestos",spare_record.id,
+                           f"{data.get('repuesto')}: movimiento {movement}, cantidad {qty}")
         db.session.commit(); flash("Registro guardado con usuario y fecha/hora."); return redirect(url_for("module_page",module=module))
     items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).limit(100).all()
     parsed=[(r,json.loads(r.data or "{}")) for r in items]
