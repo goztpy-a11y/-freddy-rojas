@@ -30,8 +30,10 @@ MODULES = {
   ("telefono","Teléfono","text",False),("direccion","Dirección","text",False),
   ("datos_bancarios","Datos bancarios del cliente (no cuenta de la empresa)","text",False)]),
  "materiales": ("Materiales y precios", "admin", [
-  ("nombre","Material","text",True),("precio","Precio vigente por unidad","number",True),
-  ("unidad","Unidad (kg, unidad, litro, etc.)","text",True),("stock","Stock inicial","number",False)]),
+  ("nombre","Material","text",True),("precio_minorista","Precio minorista (opcional)","number",False),
+  ("precio_mayorista","Precio mayorista (opcional)","number",False)]),
+ "inventario": ("Inventario de materiales", "inventario", [
+  ("nombre","Nombre del material","text",True),("cantidad","Cantidad disponible","number",True)]),
  "tickets": ("Tickets de entrada", "caja", [
   ("cliente","Cliente / proveedor","text",True),("material","Material","text",True),
   ("cantidad","Cantidad / kg","number",True),("precio","Precio aplicado (automático al elegir material)","number",False),
@@ -55,19 +57,19 @@ MODULES = {
   ("precio_unitario","Precio unitario","number",True),("moneda","Moneda (PYG / USD)","text",True),("tipo_cambio","Tipo de cambio usado","number",False),("destino","Destino / envío","text",False)]),
  "cuentas_pagar": ("Cuentas por pagar", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),
-  ("vencimiento","Vencimiento","date",False),("cheque_adelantado","¿Incluye cheque adelantado? (sí/no)","text",False)]),
+  ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
   ("cliente","Cliente","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
-  ("vencimiento","Vencimiento","date",False),("estado","Estado / seguimiento","text",False)]),
+  ("vencimiento","Vencimiento","date",False),("estado","Estado / seguimiento","select",False)]),
  "cheques": ("Cheques adelantados", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("numero","Número de cheque","text",True),("importe","Importe","number",True),
-  ("fecha","Fecha del cheque","date",True),("vencimiento","Fecha de vencimiento","date",True),("estado","Estado","text",True)]),
+  ("fecha","Fecha del cheque","date",True),("vencimiento","Fecha de vencimiento","date",True),("estado","Estado","select",True)]),
  "combustible": ("Combustible por camión", "estacion", [
   ("camion","Camión / chapa / código","text",True),("litros","Cantidad cargada (litros)","number",True),
-  ("fecha","Fecha y hora de carga","datetime-local",True),("importe","Costo total","number",True),("odometro","Kilometraje / horómetro","number",False),("responsable","Responsable","text",False)]),
+  ("fecha","Fecha y hora de carga","datetime-local",True),("responsable","Responsable","text",False)]),
  "gomeria": ("Gomería y servicios", "gomeria", [
   ("camion","Camión / chapa / código","text",True),("servicio","Trabajo realizado","text",True),("repuesto","Repuesto utilizado","text",False),
-  ("cantidad","Cantidad","number",False),("costo","Costo","number",False),("responsable","Responsable","text",False),("observaciones","Observaciones","text",False)]),
+  ("cantidad","Cantidad","number",False),("responsable","Responsable","text",False),("observaciones","Observaciones","text",False)]),
  "repuestos": ("Inventario de repuestos hidráulicos", "inventario", [
   ("nombre","Repuesto","text",True),("codigo","Código / referencia","text",False),("stock","Stock disponible","number",True),
   ("stock_minimo","Stock mínimo","number",False),("ubicacion","Ubicación","text",False)]),
@@ -92,6 +94,7 @@ class Material(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False, unique=True)
     price = db.Column(db.Numeric(16, 2), nullable=False, default=0)
+    wholesale_price = db.Column(db.Numeric(16, 2), nullable=True)
     unit = db.Column(db.String(30), nullable=False, default="kg")
     stock = db.Column(db.Numeric(16, 3), nullable=False, default=0)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -132,6 +135,12 @@ class AuditLog(db.Model):
 
 with app.app_context():
     db.create_all()
+    from sqlalchemy import inspect
+    if "material" in inspect(db.engine).get_table_names():
+        cols = {c["name"] for c in inspect(db.engine).get_columns("material")}
+        if "wholesale_price" not in cols:
+            with db.engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE material ADD COLUMN wholesale_price NUMERIC(16, 2)")
     initial_password = os.environ.get("ADMIN_PASSWORD")
     if initial_password and not User.query.filter_by(username=os.environ.get("ADMIN_USERNAME", "admin")).first():
         db.session.add(User(username=os.environ.get("ADMIN_USERNAME", "admin"),
@@ -252,7 +261,7 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
-<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
+<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a><a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial general</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
 
@@ -314,25 +323,32 @@ def module_page(module):
     title, area, fields = MODULES[module]
     if module == "materiales":
         if request.method == "POST":
-            name = request.form.get("nombre","").strip()
-            if not name: flash("El material requiere nombre.")
+            name=request.form.get("nombre","").strip()
+            minor=request.form.get("precio_minorista","").strip().replace(",",".")
+            major=request.form.get("precio_mayorista","").strip().replace(",",".")
+            if not name or (not minor and not major): flash("Ingresá el nombre y al menos uno de los precios.")
+            elif Material.query.filter(db.func.lower(Material.name)==name.lower()).first(): flash("Ese material ya existe. Actualizá sus precios desde el listado.")
             else:
                 try:
-                    price = Decimal(request.form.get("precio","0") or "0")
-                    stock = Decimal(request.form.get("stock","0") or "0")
-                    if price < 0 or stock < 0: raise InvalidOperation()
-                    m = Material(name=name,price=price,unit=request.form.get("unidad","kg").strip() or "kg",stock=stock)
+                    pminor=Decimal(minor) if minor else Decimal("0")
+                    pmajor=Decimal(major) if major else None
+                    if pminor<0 or (pmajor is not None and pmajor<0): raise InvalidOperation()
+                    m=Material(name=name,price=pminor,wholesale_price=pmajor,unit="kg",stock=0)
                     db.session.add(m); db.session.flush()
-                    log_action("crear material y precio","materiales",m.id,name)
+                    log_action("crear material y precios","materiales",m.id,f"{name}; minorista={minor or 'no definido'}; mayorista={major or 'no definido'}")
                     db.session.commit(); flash("Material guardado.")
-                except (InvalidOperation, ValueError):
-                    db.session.rollback(); flash("Precio o stock inválido.")
-                return redirect(url_for("module_page",module=module))
-        items = Material.query.order_by(Material.name).all()
-        return render_template_string(BASE + """
-        <section class="card"><h2>{{title}}</h2><p class="muted">Solo administración puede agregar materiales y cambiar precios. Los tickets conservan el precio aplicado.</p>
-        <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
-        <section class="card"><h2>Materiales vigentes</h2><table><tr><th>Material</th><th>Precio</th><th>Unidad</th><th>Stock</th><th>Actualizar precio</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price}}</td><td>{{m.unit}}</td><td>{{m.stock}}</td><td><form method="post" action="{{url_for('update_material_price',mid=m.id)}}" class="actions"><input aria-label="Nuevo precio" name="precio" type="number" step="0.01" min="0" required><button class="btn">Guardar precio</button></form></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title=title, fields=fields, items=items)
+                except (InvalidOperation,ValueError): db.session.rollback(); flash("Los precios deben ser números válidos.")
+            return redirect(url_for("module_page",module=module))
+        items=Material.query.order_by(Material.name).all()
+        return render_template_string(BASE+"""
+        <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
+        <div><label>Nombre del material</label><input name="nombre" required></div>
+        <div><label>Precio minorista (opcional)</label><input name="precio_minorista" type="number" min="0" step="0.01"></div>
+        <div><label>Precio mayorista (opcional)</label><input name="precio_mayorista" type="number" min="0" step="0.01"></div>
+        <div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
+        <section class="card"><h2>Listado de materiales</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
+        <table><tr><th>Material</th><th>Precio minorista</th><th>Precio mayorista</th><th>Actualizar precios</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price if m.price and m.price != 0 else '—'}}</td><td>{{m.wholesale_price if m.wholesale_price is not none else '—'}}</td>
+        <td><form method="post" action="{{url_for('update_material_price',mid=m.id)}}" class="actions"><input aria-label="Precio minorista" name="precio_minorista" type="number" step="0.01" min="0" placeholder="Minorista"><input aria-label="Precio mayorista" name="precio_mayorista" type="number" step="0.01" min="0" placeholder="Mayorista"><button class="btn">Guardar</button></form></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items)
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
@@ -350,8 +366,95 @@ def module_page(module):
         <section class="card"><h2>{{title}}</h2><p class="warn">Solo el administrador administra las cuentas y los saldos de El Toro S.A. La cuenta del cliente se guarda por separado en su ticket/solicitud.</p>
         <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Crear cuenta</button></div></form></section>
         <section class="card"><h2>Cuentas y saldos actuales</h2><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Moneda</th><th>Saldo inicial</th><th>Saldo actual</th></tr>{% for a in items %}<tr><td>{{a.name}}</td><td>{{a.bank}}</td><td>{{a.number}}</td><td>{{a.currency}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,items=items)
+    if module == "inventario":
+        if request.method == "POST":
+            name=request.form.get("nombre","").strip(); raw=request.form.get("cantidad","").strip().replace(",",".")
+            try:
+                qty=Decimal(raw)
+                if not name or qty<=0: raise InvalidOperation()
+                mat=Material.query.filter(db.func.lower(Material.name)==name.lower()).first()
+                if not mat:
+                    mat=Material(name=name,price=0,wholesale_price=None,unit="kg",stock=qty); db.session.add(mat); db.session.flush()
+                else: mat.stock += qty
+                data={"material":mat.name,"cantidad_ingresada":str(qty),"cantidad_disponible":str(mat.stock)}
+                rec=Record(module="inventario",title=mat.name,data=json.dumps(data,ensure_ascii=False),status="Stock actualizado",created_by=current_user().id)
+                db.session.add(rec); db.session.flush(); log_action("entrada de inventario","inventario",rec.id,f"{mat.name}: +{qty}; disponible {mat.stock}")
+                db.session.commit(); flash("Material y cantidad guardados.")
+            except (InvalidOperation,ValueError): db.session.rollback(); flash("Ingresá una cantidad mayor que cero.")
+            return redirect(url_for("module_page",module=module))
+        items=Material.query.order_by(Material.name).all()
+        hist=Record.query.filter_by(module="inventario").order_by(Record.created_at.desc()).all()
+        hist_parsed=[(r,json.loads(r.data or "{}")) for r in hist]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>Inventario de materiales</h2><form method="post" class="grid">
+        <div><label>Nombre del material</label><input name="nombre" list="materiales-disponibles" required><datalist id="materiales-disponibles">{% for m in items %}<option value="{{m.name}}">{% endfor %}</datalist></div>
+        <div><label>Cantidad que se agrega</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div style="align-self:end"><button class="btn">Guardar y agregar otro</button></div></form></section>
+        <section class="card inventory-list"><h2>Materiales disponibles</h2><button class="btn" type="button" onclick="window.print()">Imprimir inventario</button>
+        <table><tr><th>Material</th><th>Cantidad disponible</th><th>Unidad</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td class="inventory-qty">{{m.stock}}</td><td>{{m.unit}}</td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Historial de inventario</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
+        <table><tr><th>Fecha/hora</th><th>Material</th><th>Cantidad agregada</th><th>Disponible</th><th>Imprimir</th></tr>{% for r,d in hist_parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{d.get('cantidad_ingresada','')}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed)
+    if module == "tickets":
+        materials=Material.query.order_by(Material.name).all()
+        if request.method=="POST":
+            client=request.form.get("cliente","").strip(); names=request.form.getlist("material"); quantities=request.form.getlist("cantidad"); price_type=request.form.get("tipo_precio","minorista")
+            lines=[]; total=Decimal("0")
+            if not client: flash("Ingresá el cliente o proveedor."); return redirect(url_for("module_page",module=module))
+            for name,raw in zip(names,quantities):
+                name=name.strip(); raw=raw.strip().replace(",",".")
+                if not name and not raw: continue
+                try:
+                    qty=Decimal(raw); mat=Material.query.filter(db.func.lower(Material.name)==name.lower()).first()
+                    if not mat or qty<=0: raise InvalidOperation()
+                    price=mat.price if price_type=="minorista" else mat.wholesale_price
+                    if price is None or (price_type=="minorista" and price<=0):
+                        flash("El material "+mat.name+" no tiene ese precio configurado."); return redirect(url_for("module_page",module=module))
+                    line_total=(qty*price).quantize(Decimal("0.01")); total+=line_total
+                    lines.append({"material":mat.name,"cantidad":str(qty),"tipo_precio":price_type,"precio":str(price),"total":str(line_total)})
+                except (InvalidOperation,ValueError): flash("Cada material debe tener una cantidad mayor que cero."); return redirect(url_for("module_page",module=module))
+            if not lines: flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
+            data={"cliente":client,"materiales":lines,"tipo_precio":price_type,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"total":str(total)}
+            rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
+            db.session.add(rec); db.session.flush(); log_action("crear ticket de entrada","tickets",rec.id,f"{client}; total {total}"); db.session.commit()
+            flash("Ticket guardado."); return redirect(url_for("module_page",module=module))
+        q=request.args.get("q","").strip().casefold(); hist=Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all()
+        parsed=[(r,json.loads(r.data or "{}")) for r in hist if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>{{title}}</h2><form method="post" id="ticket-form"><div class="grid">
+        <div><label>Cliente / proveedor</label><input name="cliente" required></div><div><label>Tipo de precio</label><select name="tipo_precio"><option value="minorista">Minorista</option><option value="mayorista">Mayorista</option></select></div>
+        <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div></div>
+        <h3>Materiales del ticket</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div></div></div>
+        <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><button class="btn">Guardar ticket</button></form></section>
+        <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
+        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <script>function addTicketLine(){const root=document.getElementById('ticket-lines');const first=root.querySelector('.ticket-line');const copy=first.cloneNode(true);copy.querySelector('select').value='';copy.querySelector('input').value='';copy.querySelector('select').required=false;copy.querySelector('input').required=false;root.appendChild(copy)}</script>
+        </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q)
+    if module == "auditoria" and request.method == "GET":
+        q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+        modules_allowed=[k for k in MODULES if allowed(k)]
+        all_records=Record.query.order_by(Record.created_at.desc()).all(); results=[]
+        for rec in all_records:
+            if rec.module not in modules_allowed: continue
+            d=json.loads(rec.data or "{}"); hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
+            if q and q not in hay: continue
+            if since and rec.created_at.strftime("%Y-%m-%d")<since: continue
+            if until and rec.created_at.strftime("%Y-%m-%d")>until: continue
+            if amount_filter and amount_filter not in str(rec.amount): continue
+            results.append((rec,d))
+        logs=AuditLog.query.order_by(AuditLog.created_at.desc()).all()
+        if q: logs=[x for x in logs if q in (x.action+" "+x.module+" "+x.detail).casefold()]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>Auditoría centralizada</h2><form method="get" class="grid">
+        <div><label>Buscar cualquier dato</label><input name="q" value="{{q}}" placeholder="Pago a cliente, proveedor, concepto..."></div>
+        <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
+        <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module='auditoria')}}">Limpiar</a></div></form>
+        <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
+        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{x.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
     if request.method == "POST":
-        data = {key: request.form.get(key,"").strip() for key,label,kind,req in fields}
+        data = {key: ("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip() for key,label,kind,req in fields}
+        if module == "cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
+        if module == "cheques" and not data.get("estado"): data["estado"]="Pendiente"
+
         for key,label,kind,req in fields:
             if req and not data.get(key):
                 flash("Falta completar: "+label); return redirect(url_for("module_page",module=module))
@@ -431,33 +534,44 @@ def module_page(module):
                 log_action("actualizar stock de repuesto hidráulico","repuestos",spare_record.id,
                            f"{data.get('repuesto')}: movimiento {movement}, cantidad {qty}")
         db.session.commit(); flash("Registro guardado con usuario y fecha/hora."); return redirect(url_for("module_page",module=module))
-    items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).limit(100).all()
-    parsed=[(r,json.loads(r.data or "{}")) for r in items]
+    items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all()
+    q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+    parsed=[]
+    for r in items:
+        d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
+        if q and q not in hay: continue
+        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
+        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if amount_filter and amount_filter not in str(r.amount): continue
+        parsed.append((r,d))
     return render_template_string(BASE+"""
     <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
-    {% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001"{% endif %}></div>{% endfor %}
+    {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
+    {% if kind=='checkbox' %}<label class="check-field"><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Sí, incluye cheque adelantado</label>
+    {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
+    {% elif kind=='select' and module=='cheques' %}<select name="{{key}" required><option>Pendiente</option><option>Desembolsado</option></select>
+    {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001"{% endif %}>{% endif %}</div>{% endfor %}
     <div style="align-self:end"><button class="btn">Guardar registro</button></div></form>
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
-    </section><section class="card"><h2>Historial reciente</h2>{% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th></tr>
-    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No hay registros todavía.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed)
+    </section><section class="card"><h2>Historial completo</h2><form method="get" class="grid"><div><label>Buscar en cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Filtrar por monto</label><input name="monto" value="{{amount_filter}}"></div><div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module=module)}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
+    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th><th>Imprimir</th></tr>
+    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
 
 
 @app.post("/materiales/<int:mid>/precio")
 @admin_required
 def update_material_price(mid):
-    material = db.get_or_404(Material, mid)
+    material=db.get_or_404(Material,mid)
+    minor=request.form.get("precio_minorista","").strip().replace(",","."); major=request.form.get("precio_mayorista","").strip().replace(",",".")
     try:
-        new_price = Decimal(request.form.get("precio","").replace(",","."))
-        if new_price < 0: raise InvalidOperation()
-    except (InvalidOperation, ValueError):
-        flash("El precio debe ser un número válido igual o mayor que cero.")
-        return redirect(url_for("module_page", module="materiales"))
-    old_price = material.price
-    material.price = new_price
-    log_action("cambio de precio de material", "materiales", material.id,
-               f"{material.name}: {old_price} -> {new_price}; precio nuevo solo para tickets futuros")
-    db.session.commit()
-    flash("Precio actualizado. Los tickets anteriores conservan su precio histórico.")
+        pminor=Decimal(minor) if minor else None; pmajor=Decimal(major) if major else None
+        if (pminor is not None and pminor<0) or (pmajor is not None and pmajor<0) or (pminor is None and pmajor is None): raise InvalidOperation()
+    except (InvalidOperation,ValueError):
+        flash("Ingresá al menos un precio válido; dejá vacío el que no corresponda."); return redirect(url_for("module_page",module="materiales"))
+    old_minor=material.price; old_major=material.wholesale_price
+    material.price=pminor if pminor is not None else Decimal("0"); material.wholesale_price=pmajor
+    log_action("actualizar precios de material","materiales",material.id,f"{material.name}: minorista {old_minor}->{material.price}; mayorista {old_major}->{material.wholesale_price}")
+    db.session.commit(); flash("Precios actualizados. Los tickets anteriores conservan los importes históricos.")
     return redirect(url_for("module_page", module="materiales"))
 
 @app.get("/autorizaciones")
@@ -529,7 +643,7 @@ def users():
             db.session.commit(); flash("Usuario creado."); return redirect(url_for("users"))
     items=User.query.order_by(User.username).all()
     return render_template_string(BASE+"""
-    <section class="card"><h2>Usuarios y permisos</h2><p>El administrador crea usuarios, asigna un área principal y puede asignar áreas adicionales. Los permisos también se comprueban en el servidor.</p>
+    <section class="card"><h2>Usuarios y permisos</h2>
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="password" minlength="10" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
     <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{u.areas}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
@@ -572,7 +686,7 @@ def backup_export():
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "warning": "Respaldo manual JSON; almacenar en un lugar privado y seguro.",
         "users": [{"id":u.id,"username":u.username,"role":u.role,"areas":u.areas,"active":u.active,"created_at":u.created_at.isoformat()} for u in User.query.order_by(User.id).all()],
-        "materials": [{"id":m.id,"name":m.name,"price":str(m.price),"unit":m.unit,"stock":str(m.stock),"updated_at":m.updated_at.isoformat() if m.updated_at else None} for m in Material.query.order_by(Material.id).all()],
+        "materials": [{"id":m.id,"name":m.name,"price":str(m.price),"wholesale_price":str(m.wholesale_price) if m.wholesale_price is not None else None,"unit":m.unit,"stock":str(m.stock),"updated_at":m.updated_at.isoformat() if m.updated_at else None} for m in Material.query.order_by(Material.id).all()],
         "company_accounts": [{"id":a.id,"name":a.name,"bank":a.bank,"number":a.number,"currency":a.currency,"opening_balance":str(a.opening_balance),"balance":str(a.balance),"active":a.active,"created_at":a.created_at.isoformat()} for a in CompanyAccount.query.order_by(CompanyAccount.id).all()],
         "records": [{"id":r.id,"module":r.module,"title":r.title,"data":json.loads(r.data or "{}"),"amount":str(r.amount),"status":r.status,"company_account_id":r.company_account_id,"created_by":r.created_by,"approved_by":r.approved_by,"paid_by":r.paid_by,"created_at":r.created_at.isoformat(),"updated_at":r.updated_at.isoformat()} for r in Record.query.order_by(Record.id).all()],
         "audit_log": [{"id":a.id,"user_id":a.user_id,"action":a.action,"module":a.module,"record_id":a.record_id,"detail":a.detail,"created_at":a.created_at.isoformat()} for a in AuditLog.query.order_by(AuditLog.id).all()]
