@@ -629,7 +629,7 @@ def module_page(module):
         <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
         {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
         {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Incluye cheque adelantado</label>
-        {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
+        {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Vencido</option></select>
         {% elif kind=='select' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
         {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}
         <div style="align-self:end"><button>Guardar registro</button></div></form></section>
@@ -740,7 +740,7 @@ def module_page(module):
     <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
     {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
     {% if kind=='checkbox' %}<label class="check-field"><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Sí, incluye cheque adelantado</label>
-    {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
+    {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Vencido</option></select>
     {% elif kind=='select' and module=='cheques' %}<select name="{{key}}" required><option>Pendiente</option><option>Desembolsado</option></select>
      {% elif kind=='select' and module=='gomeria' %}<select name="{{key}}" required><option value="Reparación de cubierta">Reparación de cubierta</option><option value="Cambio de cubierta">Cambio de cubierta</option><option value="Reparación de cámara">Reparación de cámara</option><option value="Cambio de cámara">Cambio de cámara</option><option value="Otro">Otro</option></select>
      {% elif kind=='select' and module=='movimientos_stock' %}<select name="{{key}}" required><option value="entrada">Entrada</option><option value="uso">Uso</option><option value="salida">Salida</option></select>
