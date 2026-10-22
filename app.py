@@ -187,7 +187,6 @@ table{width:100%;border-collapse:collapse;background:white}th,td{text-align:left
 <div>{% if user %}{{ user.username }} · {{ AREAS.get(user.role,user.role) }} · <a href="{{ url_for('logout') }}">Salir</a>{% endif %}</div></header>
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 {% if user %}<nav><a href="{{url_for('index')}}">Inicio</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a></nav>{% endif %}
-{% block body %}{% endblock %}</main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>
 """
 
 @app.context_processor
@@ -209,11 +208,11 @@ def login():
             return redirect(request.args.get("next") or url_for("index"))
         flash("Usuario o contraseña incorrectos.")
     return render_template_string(BASE + """
-    {% block body %}<section class="card" style="max-width:430px;margin:35px auto"><h2>Iniciar sesión</h2>
+    <section class="card" style="max-width:430px;margin:35px auto"><h2>Iniciar sesión</h2>
     {% if not config.get('ADMIN_PASSWORD') and not user %}<p class="warn">El administrador inicial se configura en Render mediante ADMIN_USERNAME y ADMIN_PASSWORD. No existe una contraseña pública predeterminada.</p>{% endif %}
     <form method="post"><label>Usuario</label><input name="username" autocomplete="username" required>
     <label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required>
-    <p><button class="btn" type="submit">Entrar</button></p></form></section>{% endblock %}""", title="Acceso")
+    <p><button class="btn" type="submit">Entrar</button></p></form></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Acceso")
 
 @app.get("/logout")
 def logout():
@@ -230,13 +229,13 @@ def index():
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count()
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
     return render_template_string(BASE + """
-    {% block body %}<section class="card"><h2>Panel de control</h2><p class="muted">Los accesos y las operaciones dependen del área asignada a cada usuario.</p>
+    <section class="card"><h2>Panel de control</h2><p class="muted">Los accesos y las operaciones dependen del área asignada a cada usuario.</p>
     {% if not config.get('DATABASE_URL') %}<p class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</p>{% endif %}
     <div class="grid"><div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Revisar autorizaciones</a></p></div>
     {% if user.role=='admin' %}<div class="card"><h3>Cuentas de El Toro S.A.</h3><p>{{accounts|length}} cuenta(s) activa(s)</p><p>Solo administración puede crear cuentas o corregir saldos.</p></div>{% endif %}
     <div class="card"><h3>Registros recientes</h3><strong>{{records|length}}</strong><p>Los movimientos quedan asociados al usuario y hora.</p></div></div></section>
     <section class="card"><h2>Últimos movimientos</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>
-    {% endblock %}""", title="Inicio", pending=pending, accounts=accounts, records=records)
+    </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Inicio", pending=pending, accounts=accounts, records=records)
 
 @app.route("/modulo/<module>", methods=["GET","POST"])
 @login_required
@@ -264,9 +263,9 @@ def module_page(module):
                 return redirect(url_for("module_page",module=module))
         items = Material.query.order_by(Material.name).all()
         return render_template_string(BASE + """
-        {% block body %}<section class="card"><h2>{{title}}</h2><p class="muted">Solo administración puede agregar materiales y cambiar precios. Los tickets conservan el precio aplicado.</p>
+        <section class="card"><h2>{{title}}</h2><p class="muted">Solo administración puede agregar materiales y cambiar precios. Los tickets conservan el precio aplicado.</p>
         <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
-        <section class="card"><h2>Materiales vigentes</h2><table><tr><th>Material</th><th>Precio</th><th>Unidad</th><th>Stock</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price}}</td><td>{{m.unit}}</td><td>{{m.stock}}</td></tr>{% endfor %}</table></section>{% endblock %}""", title=title, fields=fields, items=items)
+        <section class="card"><h2>Materiales vigentes</h2><table><tr><th>Material</th><th>Precio</th><th>Unidad</th><th>Stock</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price}}</td><td>{{m.unit}}</td><td>{{m.stock}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title=title, fields=fields, items=items)
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
@@ -281,9 +280,9 @@ def module_page(module):
                 db.session.rollback(); flash("Datos de cuenta o saldo inválidos.")
         items=CompanyAccount.query.order_by(CompanyAccount.id.desc()).all()
         return render_template_string(BASE+"""
-        {% block body %}<section class="card"><h2>{{title}}</h2><p class="warn">Solo el administrador administra las cuentas y los saldos de El Toro S.A. La cuenta del cliente se guarda por separado en su ticket/solicitud.</p>
+        <section class="card"><h2>{{title}}</h2><p class="warn">Solo el administrador administra las cuentas y los saldos de El Toro S.A. La cuenta del cliente se guarda por separado en su ticket/solicitud.</p>
         <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Crear cuenta</button></div></form></section>
-        <section class="card"><h2>Cuentas y saldos actuales</h2><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Moneda</th><th>Saldo inicial</th><th>Saldo actual</th></tr>{% for a in items %}<tr><td>{{a.name}}</td><td>{{a.bank}}</td><td>{{a.number}}</td><td>{{a.currency}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td></tr>{% endfor %}</table></section>{% endblock %}""",title=title,fields=fields,items=items)
+        <section class="card"><h2>Cuentas y saldos actuales</h2><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Moneda</th><th>Saldo inicial</th><th>Saldo actual</th></tr>{% for a in items %}<tr><td>{{a.name}}</td><td>{{a.bank}}</td><td>{{a.number}}</td><td>{{a.currency}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,items=items)
     if request.method == "POST":
         data = {key: request.form.get(key,"").strip() for key,label,kind,req in fields}
         for key,label,kind,req in fields:
@@ -328,12 +327,12 @@ def module_page(module):
     items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).limit(100).all()
     parsed=[(r,json.loads(r.data or "{}")) for r in items]
     return render_template_string(BASE+"""
-    {% block body %}<section class="card"><h2>{{title}}</h2><form method="post" class="grid">
+    <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
     {% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001"{% endif %}></div>{% endfor %}
     <div style="align-self:end"><button class="btn">Guardar registro</button></div></form>
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
     </section><section class="card"><h2>Historial reciente</h2>{% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th></tr>
-    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No hay registros todavía.</p>{% endif %}</section>{% endblock %}""",title=title,fields=fields,module=module,parsed=parsed)
+    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No hay registros todavía.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed)
 
 @app.get("/autorizaciones")
 @login_required
@@ -343,9 +342,9 @@ def approvals():
     items=Record.query.filter_by(module="solicitudes").order_by(Record.created_at.asc()).all()
     parsed=[(r,json.loads(r.data or "{}")) for r in items]
     return render_template_string(BASE+"""
-    {% block body %}<section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
+    <section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
     {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
-    {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status=='Autorizado' and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago ejecutado</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section>{% endblock %}""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
+    {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status=='Autorizado' and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago ejecutado</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
 
 @app.post("/autorizaciones/<int:rid>/decidir")
 @login_required
@@ -404,14 +403,14 @@ def users():
             db.session.commit(); flash("Usuario creado."); return redirect(url_for("users"))
     items=User.query.order_by(User.username).all()
     return render_template_string(BASE+"""
-    {% block body %}<section class="card"><h2>Usuarios y permisos</h2><p>El administrador crea usuarios, asigna un área principal y puede asignar áreas adicionales. Los permisos también se comprueban en el servidor.</p>
+    <section class="card"><h2>Usuarios y permisos</h2><p>El administrador crea usuarios, asigna un área principal y puede asignar áreas adicionales. Los permisos también se comprueban en el servidor.</p>
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="password" minlength="10" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
-    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{u.areas}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td></tr>{% endfor %}</table></section>{% endblock %}""",title="Usuarios",items=items)
+    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{u.areas}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
 
 @app.errorhandler(403)
 def forbidden(e):
-    return render_template_string(BASE+""" {% block body %}<section class="card"><h2>Acceso denegado</h2><p>Tu usuario no tiene permisos para esa acción. Si necesitás acceso, pedí al administrador que te asigne el área correspondiente.</p><a class="btn" href="{{url_for('index')}}">Volver</a></section>{% endblock %}""",title="Acceso denegado"),403
+    return render_template_string(BASE+""" <section class="card"><h2>Acceso denegado</h2><p>Tu usuario no tiene permisos para esa acción. Si necesitás acceso, pedí al administrador que te asigne el área correspondiente.</p><a class="btn" href="{{url_for('index')}}">Volver</a></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Acceso denegado"),403
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT","10000")))
