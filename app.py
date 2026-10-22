@@ -216,6 +216,36 @@ footer{text-align:center;color:#8290a2;padding:24px 12px;font-size:11px}
 section.card>p:first-of-type{margin-top:0}
 /* Eliminar textos auxiliares pequeños en todas las pantallas; conservar etiquetas y avisos importantes */
 .muted,.small,.brand-copy span,footer{display:none!important}
+/* Acabado empresarial: jerarquía visual, navegación y panel ejecutivo */
+body{letter-spacing:.05px}
+header>div:last-child{background:#f3f6fb;border:1px solid #e5ebf3;border-radius:999px;padding:8px 13px;font-size:12px;color:#40536c;font-weight:650}
+header>div:last-child a{margin-left:4px}
+.sidebar{background:linear-gradient(180deg,#132b47 0%,#10243c 100%)}
+.sidebar-brand{padding-bottom:20px}
+.brand-mark{border-radius:11px;background:linear-gradient(145deg,#69a4fa,#2b63bd);font-size:16px}
+nav a{border:1px solid transparent;min-height:42px}
+nav a:first-child{border-color:rgba(125,174,244,.2)}
+nav a:hover{transform:translateX(2px)}
+main>section:first-of-type>h2{font-size:25px;letter-spacing:-.7px;margin-bottom:20px}
+main>section.card>h2{display:flex;align-items:center;gap:10px}
+main>section.card>h2:before{content:"";display:block;width:4px;height:23px;border-radius:4px;background:#3676cc}
+.grid{gap:16px}
+.grid>.card{position:relative;overflow:hidden;border-radius:14px;border-color:#e0e8f2;box-shadow:0 6px 20px rgba(24,49,79,.045);transition:transform .18s,box-shadow .18s}
+.grid>.card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(24,49,79,.09)}
+.grid>.card h3{font-size:13px;text-transform:uppercase;letter-spacing:.45px;color:#65758b}
+.grid>.card>strong{display:block;font-size:34px;line-height:1.15;letter-spacing:-1px;color:#183c68;margin:8px 0 13px}
+.grid>.card p a{font-size:12px;font-weight:750;display:inline-flex;align-items:center;gap:6px;background:#edf4ff;padding:8px 11px;border-radius:7px}
+.grid>.card p a:hover{background:#dceaff;text-decoration:none}
+table{border:1px solid #e6ecf3;border-radius:10px;overflow:hidden}
+th{padding-top:13px;padding-bottom:13px}
+td{color:#35465c}
+tbody tr:hover td{background:#f4f8fe}
+label{font-size:13px;color:#34465d}
+input,select,textarea{font-size:14px;min-height:42px}
+button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
+.flash{font-weight:650}
+@media(max-width:900px){header>div:last-child{padding:6px 9px;font-size:11px}nav a:hover{transform:none}main>section:first-of-type>h2{font-size:22px}}
+@media(max-width:520px){header>div:last-child{max-width:58%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}main>section:first-of-type>h2{font-size:21px}.grid>.card>strong{font-size:30px}}
 
 @media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
@@ -266,12 +296,12 @@ def index():
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count()
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
     return render_template_string(BASE + """
-    <section class="card"><h2>Panel de control</h2><p class="muted">Los accesos y las operaciones dependen del área asignada a cada usuario.</p>
+    <section class="card dashboard-overview"><h2>Resumen ejecutivo</h2>
     {% if not config.get('DATABASE_URL') %}<p class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</p>{% endif %}
-    <div class="grid"><div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Revisar autorizaciones</a></p></div>
-    {% if user.role=='admin' %}<div class="card"><h3>Cuentas de El Toro S.A.</h3><p>{{accounts|length}} cuenta(s) activa(s)</p><p>Solo administración puede crear cuentas o corregir saldos.</p></div>{% endif %}
-    <div class="card"><h3>Registros recientes</h3><strong>{{records|length}}</strong><p>Los movimientos quedan asociados al usuario y hora.</p></div></div></section>
-    <section class="card"><h2>Últimos movimientos</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>
+    <div class="grid"><div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Ver autorizaciones&nbsp; →</a></p></div>
+    {% if user.role=='admin' %}<div class="card"><h3>Cuentas empresariales activas</h3><strong>{{accounts|length}}</strong><p><a href="{{url_for('module_page',module='cuentas_empresa')}}">Consultar cuentas&nbsp; →</a></p></div>{% endif %}
+    <div class="card"><h3>Movimientos recientes</h3><strong>{{records|length}}</strong><p><a href="#ultimos-movimientos">Ver actividad&nbsp; →</a></p></div></div></section>
+    <section class="card" id="ultimos-movimientos"><h2>Actividad reciente</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>
     </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Inicio", pending=pending, accounts=accounts, records=records)
 
 @app.route("/modulo/<module>", methods=["GET","POST"])
