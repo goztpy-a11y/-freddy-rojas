@@ -570,7 +570,8 @@ def update_material_price(mid):
     except (InvalidOperation,ValueError):
         flash("Ingresá al menos un precio válido; dejá vacío el que no corresponda."); return redirect(url_for("module_page",module="materiales"))
     old_minor=material.price; old_major=material.wholesale_price
-    material.price=pminor if pminor is not None else Decimal("0"); material.wholesale_price=pmajor
+    if pminor is not None: material.price=pminor
+    if request.form.get("precio_mayorista","").strip(): material.wholesale_price=pmajor
     log_action("actualizar precios de material","materiales",material.id,f"{material.name}: minorista {old_minor}->{material.price}; mayorista {old_major}->{material.wholesale_price}")
     db.session.commit(); flash("Precios actualizados. Los tickets anteriores conservan los importes históricos.")
     return redirect(url_for("module_page", module="materiales"))
