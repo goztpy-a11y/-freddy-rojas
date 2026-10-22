@@ -297,6 +297,7 @@ input:focus,select:focus,textarea:focus{outline:3px solid rgba(52,117,205,.15);b
 {% if user.role=='admin' %}
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
 <a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
+<a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
 {% if allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
