@@ -1,0 +1,366 @@
+# Funciones ampliadas de finanzas, proveedores y flota para El Toro S.A.
+import json
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from flask import request, redirect, url_for, render_template_string, flash, abort
+from app import app, db, Record, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE
+
+MODULES.update({
+    "pagos_diarios": ("Pagos diarios y por ticket", "caja", []),
+    "prestamos": ("Préstamos", "caja", []),
+    "proveedores": ("Proveedores y precios asignados", "caja", []),
+    "planillas": ("Planillas de diferencias, pagos y fletes", "caja", []),
+    "flota": ("Camiones de la empresa y retiros", "estacion", []),
+    "combustible_stock": ("Stock de combustible", "estacion", []),
+    "combustible_camion": ("Cargas de combustible por camión", "estacion", []),
+    "mantenimiento": ("Mantenimiento de camiones y maquinarias", "estacion", []),
+    "gomeria_camiones": ("Gomería por camión", "gomeria", []),
+})
+
+def _data(r):
+    try: return json.loads(r.data or "{}")
+    except Exception: return {}
+
+def _rows(module):
+    return Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all()
+
+def _save(module, title, data, amount=0, status="Registrado"):
+    rec=Record(module=module,title=title,data=json.dumps(data,ensure_ascii=False),
+               amount=Decimal(str(amount or 0)),status=status,created_by=current_user().id)
+    db.session.add(rec); db.session.flush()
+    log_action("crear registro",module,rec.id,title)
+    db.session.commit()
+    return rec
+
+def _can_caja():
+    if not (current_user().role=="admin" or allowed("caja")): abort(403)
+
+def _can_area(area):
+    if not (current_user().role=="admin" or allowed(area)): abort(403)
+
+def _page(title, body, **kwargs):
+    return render_template_string(BASE+body+"""</main><footer>El Toro S.A.</footer></body></html>""",title=title,**kwargs)
+
+@app.get("/pagos-diarios")
+@login_required
+def pagos_diarios():
+    _can_caja()
+    rows=_rows("pagos_diarios")
+    if request.args.get("q"):
+        q=request.args["q"].strip().casefold()
+        rows=[r for r in rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+    total=sum((Decimal(str(r.amount or 0)) for r in rows),Decimal("0"))
+    return _page("Pagos diarios", """
+    <section class="card"><h2>Registrar pago diario</h2>
+    <form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
+    <div><label>Número de ticket</label><input name="ticket" required></div>
+    <div><label>Número de comprobante de este pago</label><input name="comprobante" required></div>
+    <div><label>Cliente / proveedor</label><input name="persona" required></div>
+    <div><label>Importe total del ticket/deuda (Gs.)</label><input name="total" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Importe que se paga ahora (Gs.)</label><input name="pago" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Fecha del pago</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div>
+    <div><label>Cuenta / referencia</label><input name="cuenta"></div><div><label>Concepto y observaciones</label><input name="detalle"></div>
+    <div style="align-self:end"><button>Guardar pago</button></div></form></section>
+    <section class="card"><h2>Historial de pagos · Total registrado: Gs. {{total}}</h2>
+    <form method="get" class="actions"><input name="q" placeholder="Buscar ticket, persona, medio..." value="{{request.args.get('q','')}}"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
+    <table><tr><th>Fecha</th><th>Ticket</th><th>Comprobante</th><th>Persona</th><th>Total deuda</th><th>Pagó ahora</th><th>Saldo tras pago</th><th>Medio</th><th>Detalle</th></tr>
+    {% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('comprobante','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{r.amount}}</td><td>{{d.get('saldo','')}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('detalle','')}} {{d.get('cuenta','')}}</td></tr>{% endfor %}</table></section>
+    """,rows=rows,total=total,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+@app.post("/pagos-diarios/crear")
+@login_required
+def crear_pago_diario():
+    _can_caja()
+    ticket=request.form.get("ticket","").strip()
+    comp=request.form.get("comprobante","").strip()
+    persona=request.form.get("persona","").strip()
+    try:
+        total=Decimal(request.form.get("total","").replace(",",".")); pago=Decimal(request.form.get("pago","").replace(",","."))
+        if not ticket or not comp or not persona or total<=0 or pago<=0 or pago>total: raise InvalidOperation()
+    except (InvalidOperation,ValueError):
+        flash("Revisá el ticket y los importes: el pago debe ser mayor que cero y no superar la deuda total.")
+        return redirect(url_for("pagos_diarios"))
+    # El comprobante identifica cada pago; el mismo ticket admite pagos parciales sucesivos.
+    if any(_data(r).get("comprobante","").casefold()==comp.casefold() for r in _rows("pagos_diarios")):
+        flash("Comprobante repetido: no se guardó el pago. Usá un número de comprobante distinto.")
+        return redirect(url_for("pagos_diarios"))
+    previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
+    paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
+    if previous:
+        old_total=Decimal(str(_data(previous[0]).get("total",total)))
+        if old_total!=total:
+            flash("El total ingresado no coincide con el total ya registrado para ese ticket.")
+            return redirect(url_for("pagos_diarios"))
+        if paid+pago>total:
+            flash("Ticket ya registrado y el pago excede el saldo pendiente. Saldo disponible: Gs. "+str(total-paid))
+            return redirect(url_for("pagos_diarios"))
+    saldo=total-paid-pago
+    _save("pagos_diarios","Pago ticket "+ticket,{"ticket":ticket,"comprobante":comp,"persona":persona,
+        "total":str(total),"fecha":request.form.get("fecha",""),"medio":request.form.get("medio",""),
+        "cuenta":request.form.get("cuenta","").strip(),"detalle":request.form.get("detalle","").strip(),
+        "pagado_acumulado":str(paid+pago),"saldo":str(saldo)},pago,"Pagado" if saldo==0 else "Pago parcial")
+    flash("Pago registrado. Saldo pendiente: Gs. "+str(saldo))
+    return redirect(url_for("pagos_diarios"))
+
+@app.route("/prestamos",methods=["GET","POST"])
+@login_required
+def prestamos():
+    _can_caja()
+    if request.method=="POST":
+        if request.form.get("accion")=="pago":
+            try:
+                loan_id=int(request.form.get("prestamo_id","")); loan=db.session.get(Record,loan_id)
+                amount=Decimal(request.form.get("importe","").replace(",",".")); d=_data(loan) if loan else {}
+                if not loan or loan.module!="prestamos" or amount<=0: raise InvalidOperation()
+                paid=sum((Decimal(str(_data(x).get("importe",0))) for x in _rows("prestamos_pagos") if str(_data(x).get("prestamo_id"))==str(loan_id)),Decimal("0"))
+                balance=Decimal(str(d.get("monto",0)))-paid
+                if amount>balance: raise InvalidOperation()
+                _save("prestamos_pagos","Pago préstamo "+str(loan_id),{"prestamo_id":loan_id,"cliente":d.get("cliente"),"entidad":d.get("entidad"),"fecha":request.form.get("fecha",""),"importe":str(amount),"medio":request.form.get("medio",""),"cuota":request.form.get("cuota",""),"observaciones":request.form.get("observaciones","")},amount,"Pagado")
+                flash("Pago del préstamo registrado.")
+            except (ValueError,InvalidOperation):
+                flash("No se pudo registrar el pago: verificá el préstamo y el saldo.")
+            return redirect(url_for("prestamos"))
+        try:
+            cliente=request.form.get("cliente","").strip(); entidad=request.form.get("entidad","").strip()
+            monto=Decimal(request.form.get("monto","").replace(",",".")); plazo=int(request.form.get("plazo","12"))
+            if not cliente or not entidad or monto<=0 or plazo<1 or plazo>12: raise InvalidOperation()
+            _save("prestamos","Préstamo · "+cliente,{"cliente":cliente,"entidad":entidad,"fecha":request.form.get("fecha",""),"monto":str(monto),"plazo_meses":plazo,"modalidad":request.form.get("modalidad","Efectivo"),"vencimiento":request.form.get("vencimiento",""),"observaciones":request.form.get("observaciones","")},monto,"Pendiente")
+            flash("Préstamo registrado.")
+        except (ValueError,InvalidOperation):
+            flash("Revisá los datos del préstamo; el plazo permitido es de 1 a 12 meses.")
+        return redirect(url_for("prestamos"))
+    loans=_rows("prestamos"); payments=_rows("prestamos_pagos"); summaries=[]
+    for r in loans:
+        d=_data(r); paid=sum((Decimal(str(_data(p).get("importe",0))) for p in payments if str(_data(p).get("prestamo_id"))==str(r.id)),Decimal("0"))
+        total=Decimal(str(d.get("monto",0))); bal=total-paid
+        summaries.append((r,d,paid,bal))
+    return _page("Préstamos", """
+    <section class="card"><h2>Registrar préstamo</h2><form method="post" class="grid">
+    <div><label>Entidad / proveedor</label><input name="entidad" required></div><div><label>Cliente</label><input name="cliente" required></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Monto (Gs.)</label><input name="monto" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Plazo (máximo 12 meses)</label><input name="plazo" type="number" min="1" max="12" value="12" required></div>
+    <div><label>Modalidad de pago</label><select name="modalidad"><option>Efectivo</option><option>Automático</option></select></div>
+    <div><label>Próximo vencimiento</label><input name="vencimiento" type="date"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Guardar préstamo</button></div></form></section>
+    <section class="card"><h2>Préstamos y saldos</h2><button onclick="window.print()" type="button">Imprimir</button><table><tr><th>Entidad / cliente</th><th>Fecha</th><th>Monto</th><th>Pagado</th><th>Saldo</th><th>Plazo</th><th>Estado</th><th>Registrar pago</th></tr>
+    {% for r,d,paid,balance in summaries %}<tr><td>{{d.get('entidad')}} / {{d.get('cliente')}}</td><td>{{d.get('fecha')}}</td><td>{{d.get('monto')}}</td><td>{{paid}}</td><td>{{balance}}</td><td>{{d.get('plazo_meses')}} meses</td><td>{{'Pagado' if balance==0 else ('Vencido' if d.get('vencimiento') and d.get('vencimiento')<today else 'Pendiente')}}</td><td>{% if balance>0 %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="prestamo_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" placeholder="Importe" required><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Automático</option><option>Cheque</option></select><input name="cuota" placeholder="N.º cuota"><input name="observaciones" placeholder="Detalle"><button>Registrar pago</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de pagos de préstamos</h2><table><tr><th>Fecha</th><th>Préstamo</th><th>Cliente</th><th>Importe</th><th>Medio</th></tr>{% for p in payments %}{% set d=decode(p) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('entidad','')}} #{{d.get('prestamo_id')}}</td><td>{{d.get('cliente')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td></tr>{% endfor %}</table></section>
+    """,summaries=summaries,payments=payments,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+@app.route("/proveedores",methods=["GET","POST"])
+@login_required
+def proveedores():
+    _can_caja()
+    if request.method=="POST":
+        if current_user().role!="admin": abort(403)
+        nombre=request.form.get("nombre","").strip()
+        if not nombre:
+            flash("Ingresá el nombre del proveedor."); return redirect(url_for("proveedores"))
+        existing=[_data(r) for r in _rows("proveedores")]
+        if any(d.get("nombre","").casefold()==nombre.casefold() for d in existing):
+            flash("Ese proveedor ya está registrado."); return redirect(url_for("proveedores"))
+        code="PROV-"+str(len(existing)+1).zfill(5)
+        prices={}
+        for key,val in request.form.items():
+            if key.startswith("precio_") and val.strip():
+                prices[key[7:]]=val.strip()
+        _save("proveedores",code+" · "+nombre,{"codigo":code,"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices},0,"Activo")
+        flash("Proveedor registrado con código "+code)
+        return redirect(url_for("proveedores"))
+    items=[(r,_data(r)) for r in _rows("proveedores")]
+    from app import Material
+    mats=Material.query.order_by(Material.name).all()
+    return _page("Proveedores", """
+    {% if user.role=='admin' %}<section class="card"><h2>Registrar proveedor</h2><form method="post" class="grid">
+    <div><label>Nombre / razón social</label><input name="nombre" required></div><div><label>Cédula (opcional)</label><input name="cedula"></div><div><label>Teléfono</label><input name="telefono"></div><div><label>Dirección</label><input name="direccion"></div>
+    {% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01"></div>{% endfor %}
+    <div style="align-self:end"><button>Guardar proveedor</button></div></form>{% else %}<p>Solo Administración puede registrar o modificar proveedores y precios.</p>{% endif %}</section>
+    <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th></tr>
+    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td></tr>{% endfor %}</table></section>
+    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos") for r,d in items})
+
+@app.get("/proveedores/movimiento/<path:nombre>")
+@login_required
+def movimiento_proveedor(nombre):
+    _can_caja()
+    rows=[r for r in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if nombre.casefold() in (r.title+" "+r.data).casefold()]
+    month=request.args.get("mes",datetime.now().strftime("%Y-%m"))
+    rows=[r for r in rows if r.created_at.strftime("%Y-%m")==month]
+    return _page("Movimiento proveedor", """
+    <section class="card"><h2>Movimiento de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
+    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
+    """,nombre=nombre,month=month,rows=rows)
+
+@app.route("/planillas",methods=["GET","POST"])
+@login_required
+def planillas():
+    _can_caja()
+    if request.method=="POST":
+        d={k:request.form.get(k,"").strip() for k in ["cliente","fecha","kg","monto_deuda","diferencia","pago","medio","flete","salida","detalle"]}
+        try:
+            kg=Decimal(d["kg"] or "0"); debt=Decimal(d["monto_deuda"] or "0"); diff=Decimal(d["diferencia"] or "0"); pay=Decimal(d["pago"] or "0"); freight=Decimal(d["flete"] or "0")
+            if not d["cliente"] or min(kg,debt,diff,pay,freight)<0: raise InvalidOperation()
+            d.update({"kg":str(kg),"monto_deuda":str(debt),"diferencia":str(diff),"pago":str(pay),"flete":str(freight)})
+            _save("planillas",d["cliente"]+" · planilla",d,pay,"Pago parcial" if pay else "Registrado")
+            flash("Movimiento de planilla guardado.")
+        except (InvalidOperation,ValueError):
+            flash("Revisá los datos numéricos de la planilla.")
+        return redirect(url_for("planillas"))
+    rows=_rows("planillas")
+    return _page("Planillas", """
+    <section class="card"><h2>Diferencias, pagos, fletes y salidas</h2><form method="post" class="grid">
+    <div><label>Cliente / proveedor</label><input name="cliente" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Kilogramos recibidos</label><input name="kg" type="number" min="0" step="0.001" value="0"></div><div><label>Deuda / diferencia anterior (Gs.)</label><input name="monto_deuda" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Diferencia de este movimiento (Gs.)</label><input name="diferencia" type="number" min="0" step="0.01" value="0"></div><div><label>Pago parcial (Gs.)</label><input name="pago" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Medio de pago</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label>Flete (Gs.)</label><input name="flete" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Salida / retiro</label><input name="salida" placeholder="Detalle de salida"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Guardar planilla</button></div></form></section>
+    <section class="card"><h2>Historial de planillas</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Cliente</th><th>Kg</th><th>Deuda anterior</th><th>Diferencia</th><th>Pago</th><th>Flete</th><th>Salida</th><th>Detalle</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('cliente')}}</td><td>{{d.get('kg')}}</td><td>{{d.get('monto_deuda')}}</td><td>{{d.get('diferencia')}}</td><td>{{d.get('pago')}}</td><td>{{d.get('flete')}}</td><td>{{d.get('salida')}}</td><td>{{d.get('detalle')}}</td></tr>{% endfor %}</table></section>
+    """,rows=rows,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+@app.route("/flota",methods=["GET","POST"])
+@login_required
+def flota():
+    _can_area("estacion")
+    if request.method=="POST":
+        action=request.form.get("accion","movimiento")
+        try:
+            if action=="equipo":
+                if current_user().role!="admin": abort(403)
+                name=request.form.get("camion","").strip(); interval=Decimal(request.form.get("intervalo","15000").replace(",",".")); daily=Decimal(request.form.get("diario","0").replace(",","."))
+                if not name or interval<=0 or daily<0: raise InvalidOperation()
+                code="EQ-"+str(len(_rows("flota_equipo"))+1).zfill(4)
+                _save("flota_equipo",code+" · "+name,{"codigo":code,"nombre":name,"tipo":request.form.get("tipo","Camión"),"intervalo":str(interval),"diario":str(daily),"unidad":"km" if request.form.get("tipo")=="Camión" else "horas"},0,"Activo")
+                flash("Equipo registrado: "+code)
+            else:
+                name=request.form.get("camion","").strip(); kg=Decimal(request.form.get("kg","0").replace(",","."))
+                if not name or kg<0: raise InvalidOperation()
+                _save("flota",name+" · retiro",{"camion":name,"fecha":request.form.get("fecha",""),"kg":str(kg),"material":request.form.get("material","").strip(),"observaciones":request.form.get("observaciones","").strip()},0,"Registrado")
+                flash("Retiro del camión registrado.")
+        except (InvalidOperation,ValueError):
+            flash("Revisá el nombre y los valores numéricos.")
+        return redirect(url_for("flota"))
+    equip=[(r,_data(r)) for r in _rows("flota_equipo")]
+    moves=[(r,_data(r)) for r in _rows("flota")]
+    fuel=[(r,_data(r)) for r in _rows("combustible_camion")]
+    return _page("Flota", """
+    {% if user.role=='admin' %}<section class="card"><h2>Agregar camión o maquinaria</h2><form method="post" class="grid"><input type="hidden" name="accion" value="equipo">
+    <div><label>Nombre / chapa / código</label><input name="camion" required></div><div><label>Tipo</label><select name="tipo"><option>Camión</option><option>Maquinaria</option></select></div>
+    <div><label>Intervalo mantenimiento (km u horas)</label><input name="intervalo" type="number" min="1" value="15000" required></div><div><label>Uso estimado diario (km u horas)</label><input name="diario" type="number" min="0" step="0.1" value="0" required></div><div style="align-self:end"><button>Guardar equipo</button></div></form></section>{% endif %}
+    <section class="card"><h2>Registrar retiro de mercadería</h2><form method="post" class="grid"><input type="hidden" name="accion" value="movimiento">
+    <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r,d in equip %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Kilogramos traídos</label><input type="number" name="kg" min="0" step="0.001" required></div><div><label>Material / carga</label><input name="material"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Registrar retiro</button></div></form></section>
+    <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg registrados</th><th>Combustible cargado (L)</th><th>Registros</th></tr>
+    {% for r,d in equip if d.get('tipo')=='Camión' %}{% set kg=moves|selectattr('1.camion','equalto',d.get('nombre'))|map(attribute='1.kg')|list %}<tr><td>{{d.get('nombre')}}</td><td>{{kg|sum if kg else 0}}</td><td>{{fuel|selectattr('1.camion','equalto',d.get('nombre'))|map(attribute='1.litros')|list|sum}}</td><td>{{moves|selectattr('1.camion','equalto',d.get('nombre'))|list|length}}</td></tr>{% endfor %}</table></section>
+    """,equip=equip,moves=moves,fuel=fuel,today=datetime.now().strftime("%Y-%m-%d"))
+
+@app.route("/combustible-stock",methods=["GET","POST"])
+@login_required
+def combustible_stock():
+    _can_area("estacion")
+    if request.method=="POST":
+        if current_user().role!="admin": abort(403)
+        try:
+            litros=Decimal(request.form.get("litros","").replace(",",".")); ifnote=request.form.get("detalle","").strip()
+            if litros<=0: raise InvalidOperation()
+            _save("combustible_stock","Entrada de combustible",{"fecha":request.form.get("fecha",""),"litros":str(litros),"detalle":ifnote},litros,"Entrada")
+            flash("Stock de combustible actualizado.")
+        except (InvalidOperation,ValueError):
+            flash("Ingresá litros válidos mayores que cero.")
+        return redirect(url_for("combustible_stock"))
+    entries=_rows("combustible_stock"); charges=_rows("combustible_camion")
+    stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))
+    return _page("Stock combustible", """
+    {% if user.role=='admin' %}<section class="card"><h2>Cargar stock de combustible</h2><form method="post" class="grid"><div><label>Litros ingresados</label><input name="litros" type="number" min="0.01" step="0.01" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Detalle / comprobante</label><input name="detalle"></div><div style="align-self:end"><button>Agregar al stock</button></div></form></section>{% endif %}
+    <section class="card"><h2>Stock disponible: {{stock}} litros</h2><form method="post" action="{{url_for('cargar_combustible')}}" class="grid">
+    <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r in equip %}{% set d=decode(r) %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
+    <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" step="0.01" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Responsable</label><input name="responsable"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Cargar combustible</button></div></form></section>
+    <section class="card"><h2>Historial de stock y cargas</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Litros</th></tr>{% for r in entries %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Entrada</td><td>{{d.get('detalle')}}</td><td>+{{d.get('litros')}}</td></tr>{% endfor %}{% for r in charges %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Carga · {{d.get('camion')}}</td><td>{{d.get('responsable')}} {{d.get('detalle')}}</td><td>-{{d.get('litros')}}</td></tr>{% endfor %}</table></section>
+    """,stock=stock,entries=entries,charges=charges,equip=_rows("flota_equipo"),today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+@app.post("/combustible-stock/cargar")
+@login_required
+def cargar_combustible():
+    _can_area("estacion")
+    try:
+        litros=Decimal(request.form.get("litros","").replace(",",".")); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")
+        stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))
+        if litros<=0 or litros>stock: raise InvalidOperation()
+        camion=request.form.get("camion","").strip()
+        if not camion: raise InvalidOperation()
+        _save("combustible_camion","Carga combustible · "+camion,{"camion":camion,"litros":str(litros),"fecha":request.form.get("fecha",""),"responsable":request.form.get("responsable",""),"detalle":request.form.get("detalle","")},0,"Cargado")
+        flash("Carga registrada y descontada del stock.")
+    except (InvalidOperation,ValueError):
+        flash("No se pudo cargar: verificá litros y stock disponible.")
+    return redirect(url_for("combustible_stock"))
+
+@app.route("/mantenimiento",methods=["GET","POST"])
+@login_required
+def mantenimiento():
+    _can_area("estacion")
+    if request.method=="POST":
+        try:
+            action=request.form.get("accion","mantenimiento"); equipo=request.form.get("equipo","").strip()
+            if action=="lectura":
+                reading=Decimal(request.form.get("lectura","").replace(",","."))
+                if not equipo or reading<0: raise InvalidOperation()
+                _save("lecturas_equipo","Lectura · "+equipo,{"equipo":equipo,"lectura":str(reading),"fecha":request.form.get("fecha",""),"nota":request.form.get("nota","")},0,"Lectura")
+                flash("Lectura actualizada.")
+            else:
+                reading=Decimal(request.form.get("lectura","").replace(",","."))
+                if not equipo or reading<0: raise InvalidOperation()
+                _save("mantenimiento","Mantenimiento · "+equipo,{"equipo":equipo,"lectura":str(reading),"fecha":request.form.get("fecha",""),"tipo":request.form.get("tipo_mantenimiento","Preventivo"),"detalle":request.form.get("detalle",""),"responsable":request.form.get("responsable","")},0,"Mantenimiento registrado")
+                _save("lecturas_equipo","Lectura posterior a mantenimiento · "+equipo,{"equipo":equipo,"lectura":str(reading),"fecha":request.form.get("fecha",""),"nota":"Lectura registrada al realizar mantenimiento"},0,"Lectura")
+                flash("Mantenimiento guardado y lectura base actualizada.")
+        except (InvalidOperation,ValueError):
+            flash("Ingresá una lectura válida.")
+        return redirect(url_for("mantenimiento"))
+    equip=[_data(r) for r in _rows("flota_equipo")]
+    maint=_rows("mantenimiento"); readings=_rows("lecturas_equipo"); summaries=[]
+    for e in equip:
+        name=e.get("nombre"); istruck=e.get("tipo")=="Camión"; unit="km" if istruck else "horas"
+        latest_read=next((_data(r) for r in readings if _data(r).get("equipo")==name),None)
+        latest_maint=next((_data(r) for r in maint if _data(r).get("equipo")==name),None)
+        current=Decimal(str(latest_read.get("lectura",0) if latest_read else 0)); base=Decimal(str(latest_maint.get("lectura",current) if latest_maint else current))
+        interval=Decimal(str(e.get("intervalo",15000))); daily=Decimal(str(e.get("diario",0)))
+        used=max(Decimal("0"),current-base); remaining=max(Decimal("0"),interval-used)
+        summaries.append({"nombre":name,"tipo":e.get("tipo"),"unidad":unit,"intervalo":interval,"diario":daily,"actual":current,"ultimo":latest_maint.get("fecha","Sin mantenimiento") if latest_maint else "Sin mantenimiento","usado":used,"restante":remaining,"dias":(remaining/daily).quantize(Decimal("0.1")) if daily>0 else None})
+    return _page("Mantenimiento", """
+    <section class="card"><h2>Registrar lectura de uso</h2><form method="post" class="grid"><input type="hidden" name="accion" value="lectura"><div><label>Camión / maquinaria</label><select name="equipo" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div><div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Lectura actual (km u horas)</label><input type="number" name="lectura" min="0" step="0.1" required></div><div><label>Nota</label><input name="nota"></div><div style="align-self:end"><button>Actualizar lectura</button></div></form></section>
+    <section class="card"><h2>Registrar mantenimiento</h2><form method="post" class="grid"><div><label>Camión / maquinaria</label><select name="equipo" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div><div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Lectura actual al mantenimiento (km u horas)</label><input type="number" name="lectura" min="0" step="0.1" required></div><div><label>Tipo de mantenimiento</label><select name="tipo_mantenimiento"><option>Preventivo</option><option>Correctivo</option><option>Inspección</option></select></div><div><label>Trabajo realizado</label><input name="detalle" required></div><div><label>Responsable</label><input name="responsable"></div><div style="align-self:end"><button>Guardar mantenimiento</button></div></form></section>
+    <section class="card"><h2>Estado y próximo mantenimiento</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Equipo</th><th>Unidad</th><th>Uso diario estimado</th><th>Intervalo</th><th>Lectura actual</th><th>Uso desde mantenimiento</th><th>Restante</th><th>Estimación de días</th><th>Último mantenimiento</th></tr>{% for s in summaries %}<tr><td>{{s.nombre}} ({{s.tipo}})</td><td>{{s.unidad}}</td><td>{{s.diario}}</td><td>{{s.intervalo}}</td><td>{{s.actual}}</td><td>{{s.usado}}</td><td><b>{{s.restante}} {{s.unidad}}</b></td><td>{{s.dias if s.dias is not none else 'Configurar uso diario'}}</td><td>{{s.ultimo}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de mantenimientos</h2><table><tr><th>Fecha</th><th>Equipo</th><th>Lectura</th><th>Tipo</th><th>Trabajo</th><th>Responsable</th></tr>{% for r in maint %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('equipo')}}</td><td>{{d.get('lectura')}}</td><td>{{d.get('tipo')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('responsable')}}</td></tr>{% endfor %}</table></section>
+    """,equip=equip,summaries=summaries,maint=maint,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+@app.route("/gomeria-camiones",methods=["GET","POST"])
+@login_required
+def gomeria_camiones():
+    _can_area("gomeria")
+    if request.method=="POST":
+        _save("gomeria_camiones",request.form.get("camion","")+" · "+request.form.get("servicio",""),{"camion":request.form.get("camion",""),"fecha":request.form.get("fecha",""),"servicio":request.form.get("servicio",""),"costo":request.form.get("costo","0"),"kilometraje":request.form.get("kilometraje",""),"responsable":request.form.get("responsable","")},request.form.get("costo","0"),"Registrado")
+        flash("Servicio de gomería registrado.")
+        return redirect(url_for("gomeria_camiones"))
+    rows=[(r,_data(r)) for r in _rows("gomeria_camiones")]
+    equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
+    return _page("Gomería por camión", """
+    <section class="card"><h2>Registrar servicio de gomería</h2><form method="post" class="grid"><div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Trabajo realizado</label><input name="servicio" required></div><div><label>Costo (Gs.)</label><input name="costo" type="number" min="0" step="0.01" value="0"></div><div><label>Kilometraje</label><input name="kilometraje" type="number" min="0" step="1"></div><div><label>Responsable</label><input name="responsable"></div><div style="align-self:end"><button>Guardar servicio</button></div></form></section>
+    <section class="card"><h2>Historial de gomería</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Camión</th><th>Servicio</th><th>Costo</th><th>Kilometraje</th><th>Responsable</th></tr>{% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('costo')}}</td><td>{{d.get('kilometraje')}}</td><td>{{d.get('responsable')}}</td></tr>{% endfor %}</table></section>
+    """,rows=rows,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
+
+@app.get("/auditoria-pagos")
+@login_required
+def auditoria_pagos():
+    _can_area("auditoria")
+    q=request.args.get("q","").strip().casefold(); start=request.args.get("desde",""); end=request.args.get("hasta","")
+    modules=["pagos_diarios","prestamos_pagos","gastos","cuentas_pagar","combustible_camion","gomeria_camiones","planillas"]
+    rows=[]
+    for mod in modules:
+        for r in _rows(mod):
+            if q and q not in (r.title+" "+r.data+" "+str(r.amount)).casefold(): continue
+            if start and r.created_at.strftime("%Y-%m-%d")<start: continue
+            if end and r.created_at.strftime("%Y-%m-%d")>end: continue
+            rows.append(r)
+    rows.sort(key=lambda x:x.created_at,reverse=True)
+    return _page("Auditoría de pagos", """
+    <section class="card"><h2>Auditoría · Salidas de dinero y pagos</h2><form method="get" class="grid"><div><label>Buscar ticket, proveedor, importe, medio o concepto</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{start}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{end}}"></div><div style="align-self:end"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir auditoría</button></div></form>
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Detalle completo</th><th>Estado</th><th>Importe</th><th>Registro</th></tr>{% for r in rows %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+    """,rows=rows,q=q,start=start,end=end)
