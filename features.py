@@ -152,7 +152,6 @@ def prestamos():
 def proveedores():
     _can_caja()
     if request.method=="POST":
-        if current_user().role!="admin": abort(403)
         nombre=request.form.get("nombre","").strip()
         if not nombre:
             flash("Ingresá el nombre del proveedor."); return redirect(url_for("proveedores"))
@@ -161,9 +160,15 @@ def proveedores():
             flash("Ese proveedor ya está registrado."); return redirect(url_for("proveedores"))
         code="PROV-"+str(len(existing)+1).zfill(5)
         prices={}
-        for key,val in request.form.items():
-            if key.startswith("precio_") and val.strip():
-                prices[key[7:]]=val.strip()
+        if current_user().role=="admin":
+            for key,val in request.form.items():
+                if key.startswith("precio_") and val.strip():
+                    try:
+                        price=Decimal(val.replace(",","."))
+                        if price<0: raise InvalidOperation()
+                        prices[key[7:]]=str(price)
+                    except (InvalidOperation,ValueError):
+                        flash("Hay un precio inválido."); return redirect(url_for("proveedores"))
         _save("proveedores",code+" · "+nombre,{"codigo":code,"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices},0,"Activo")
         flash("Proveedor registrado con código "+code)
         return redirect(url_for("proveedores"))
@@ -171,10 +176,10 @@ def proveedores():
     from app import Material
     mats=Material.query.order_by(Material.name).all()
     return _page("Proveedores", """
-    {% if user.role=='admin' %}<section class="card"><h2>Registrar proveedor</h2><form method="post" class="grid">
+    <section class="card"><h2>Registrar proveedor</h2><form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" required></div><div><label>Cédula (opcional)</label><input name="cedula"></div><div><label>Teléfono</label><input name="telefono"></div><div><label>Dirección</label><input name="direccion"></div>
-    {% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01"></div>{% endfor %}
-    <div style="align-self:end"><button>Guardar proveedor</button></div></form>{% else %}<p>Solo Administración puede registrar o modificar proveedores y precios.</p>{% endif %}</section>
+    {% if user.role=='admin' %}{% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01"></div>{% endfor %}{% endif %}
+    <div style="align-self:end"><button>Guardar proveedor</button></div></form><p>Solo Administración puede modificar los precios.</p></section></section>
     <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th><th>Editar</th></tr>
     {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td><td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% endif %}</td></tr>{% endfor %}</table></section>
     """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items})
@@ -260,8 +265,8 @@ def planillas():
     from app import Material
     materials=Material.query.order_by(Material.name).all()
     vendors=[_data(r).get("nombre") for r in _rows("proveedores")]
-    return _page("Planillas", """
-    <section class="card"><h2>Diferencias, pagos, fletes y salidas</h2><form method="post" class="grid">
+    return _page("Cuenta de proveedores", """
+    <section class="card"><h2>Cuenta de proveedores · diferencias, mercadería, pagos y salidas</h2><form method="post" class="grid">
     <div><label>Cliente / proveedor</label><input name="cliente" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v}}">{% endfor %}</datalist></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Material</label><select name="material_id"><option value="">Sin material / ajuste manual</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Kilogramos recibidos</label><input name="kg" type="number" min="0" step="0.001" value="0"></div><div><label>Deuda inicial si no hay historial (Gs.)</label><input name="monto_deuda" type="number" min="0" step="0.01" value="0"></div>
     <div><label>Diferencia de este movimiento (Gs.)</label><input name="diferencia" type="number" min="0" step="0.01" value="0"></div><div><label>Pago parcial (Gs.)</label><input name="pago" type="number" min="0" step="0.01" value="0"></div>
@@ -418,7 +423,7 @@ def gomeria_camiones():
 def auditoria_pagos():
     _can_area("auditoria")
     q=request.args.get("q","").strip().casefold(); start=request.args.get("desde",""); end=request.args.get("hasta","")
-    modules=["pagos_diarios","prestamos_pagos","gastos","cuentas_pagar","combustible_camion","gomeria_camiones","planillas"]
+    modules=["pagos_diarios","prestamos_pagos","pagos_cuentas","gastos","cuentas_pagar","combustible_camion","gomeria_camiones","gomeria","fletes","planillas","solicitudes"]
     rows=[]
     for mod in modules:
         for r in _rows(mod):
@@ -426,8 +431,46 @@ def auditoria_pagos():
             if start and r.created_at.strftime("%Y-%m-%d")<start: continue
             if end and r.created_at.strftime("%Y-%m-%d")>end: continue
             rows.append(r)
+    # Incluir todas las salidas reales de dinero y pagos ejecutados; no las solicitudes pendientes ni las cuentas por cobrar.
+    rows=[r for r in rows if r.module not in ("solicitudes","cuentas_pagar") or r.status in ("Pagado","Pago parcial","Desembolsado")]
     rows.sort(key=lambda x:x.created_at,reverse=True)
     return _page("Auditoría de pagos", """
     <section class="card"><h2>Auditoría · Salidas de dinero y pagos</h2><form method="get" class="grid"><div><label>Buscar ticket, proveedor, importe, medio o concepto</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{start}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{end}}"></div><div style="align-self:end"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir auditoría</button></div></form>
     <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Detalle completo</th><th>Estado</th><th>Importe</th><th>Registro</th></tr>{% for r in rows %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
     """,rows=rows,q=q,start=start,end=end)
+ 
+@app.route("/fletes",methods=["GET","POST"])
+@login_required
+def fletes():
+    _can_caja()
+    if request.method=="POST":
+        try:
+            fecha=request.form.get("fecha","").strip()
+            chofer=request.form.get("chofer","").strip()
+            destino=request.form.get("destino","").strip()
+            camion=request.form.get("camion","").strip()
+            importe=Decimal(request.form.get("importe","0").replace(",","."))
+            detalle=request.form.get("detalle","").strip()
+            if not fecha or not chofer or not destino or not camion or importe<0:
+                raise InvalidOperation()
+            data={"fecha":fecha,"chofer":chofer,"destino":destino,"camion":camion,"importe":str(importe),"detalle":detalle}
+            _save("fletes","Flete · "+camion+" · "+destino,data,importe,"Pagado" if importe>0 else "Registrado")
+            flash("Flete guardado.")
+        except (InvalidOperation,ValueError):
+            flash("Revisá la fecha, el chofer, el destino, el camión y el importe.")
+        return redirect(url_for("fletes"))
+    rows=[(r,_data(r)) for r in _rows("fletes")]
+    q=request.args.get("q","").strip().casefold()
+    rows=[(r,d) for r,d in rows if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+    equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
+    return _page("Fletes", """
+    <section class="card"><h2>Registrar flete</h2><form method="post" class="grid">
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Chofer</label><input name="chofer" required></div><div><label>Destino / lugar de entrega</label><input name="destino" required></div>
+    <div><label>Camión utilizado</label><input name="camion" list="camiones-lista" required><datalist id="camiones-lista">{% for e in equip %}<option value="{{e.get('nombre')}}">{% endfor %}</datalist></div>
+    <div><label>Importe del flete (Gs.)</label><input name="importe" type="number" min="0" step="0.01" value="0" required></div>
+    <div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Guardar flete</button></div></form></section>
+    <section class="card"><h2>Historial de fletes</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar chofer, destino, camión"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
+    <table><tr><th>Fecha</th><th>Chofer</th><th>Destino</th><th>Camión</th><th>Importe</th><th>Detalle</th><th>Imprimir</th></tr>
+    {% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('chofer')}}</td><td>{{d.get('destino')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('detalle')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+    """,rows=rows,q=q,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
