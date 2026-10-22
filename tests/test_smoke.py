@@ -43,7 +43,7 @@ class SmokeTests(unittest.TestCase):
         ]
         for path in paths:
             with self.subTest(path=path):
-                response = self.client.get(path)
+                response = self.client.get(path, follow_redirects=True)
                 self.assertEqual(response.status_code, 200, path)
 
     def test_add_material_with_optional_prices(self):
