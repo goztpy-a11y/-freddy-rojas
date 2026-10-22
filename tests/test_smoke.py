@@ -18,6 +18,7 @@ class SmokeTests(unittest.TestCase):
 
     def setUp(self):
         with app.app_context():
+            db.session.remove()
             db.drop_all()
             db.create_all()
             user = User(username="admin", password_hash=generate_password_hash("test-only-password-long-enough"),
@@ -54,6 +55,29 @@ class SmokeTests(unittest.TestCase):
             self.assertIsNotNone(material)
             self.assertEqual(str(material.price), "0.00")
             self.assertIsNone(material.wholesale_price)
+
+
+    def test_receivable_collections_are_not_audited_as_outgoing_payments(self):
+        from app import Record
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "cliente": "Proveedor A", "concepto": "Cuenta de prueba",
+            "importe": "1000", "vencimiento": "2026-11-01", "estado": "Pendiente"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            original = Record.query.filter_by(module="cuentas_cobrar").first()
+            self.assertIsNotNone(original)
+            rid = original.id
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "accion": "pago", "registro_id": str(rid), "importe": "300",
+            "fecha": "2026-10-22", "medio": "Efectivo", "detalle": "Cobro parcial"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            self.assertEqual(Record.query.filter_by(module="cobros_cuentas").count(), 1)
+            self.assertEqual(Record.query.filter_by(module="pagos_cuentas").count(), 0)
+            original = db.session.get(Record, rid)
+            self.assertEqual(original.status, "En proceso")
 
     def test_expense_with_multiple_items(self):
         response = self.client.post("/modulo/gastos", data={
