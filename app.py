@@ -166,9 +166,10 @@ def allowed(module):
         return False
     if user.role == "admin":
         return True
-    assigned = (user.areas or "").split(",")
+    # Las cuentas normales acceden solo a los módulos de las áreas asignadas.
+    assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()}
     required_area = MODULES.get(module, (None, module))[1]
-    return module in assigned or required_area in assigned
+    return required_area in assigned
 
 def login_required(fn):
     @wraps(fn)
@@ -267,7 +268,16 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
-<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a><a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial general</a><a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a><a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and (user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',')) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
+<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
+{% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes de mi área</a><a href="{{url_for('general_history')}}">Historial de mi área</a>{% endif %}
+{% if user.role=='admin' or allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a>{% endif %}
+{% if user.role=='admin' or allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
+{% if user.role=='admin' or allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a>{% endif %}
+{% if user.role=='admin' or allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
+{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
+{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}
+{% if user.role=='admin' or allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
+<a href="{{url_for('change_password')}}">Mi contraseña</a></nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
 
@@ -307,8 +317,9 @@ def logout():
 @login_required
 def index():
     u = current_user()
-    records = Record.query.order_by(Record.created_at.desc()).limit(8).all()
-    pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count()
+    visible_modules = [key for key in MODULES if allowed(key)]
+    records = Record.query.filter(Record.module.in_(visible_modules)).order_by(Record.created_at.desc()).limit(8).all() if visible_modules else []
+    pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
     return render_template_string(BASE + """
     <section class="card dashboard-overview"><h2>Resumen ejecutivo</h2>
@@ -780,7 +791,7 @@ def update_material_price(mid):
 @login_required
 def approvals():
     u=current_user()
-    if u.role!="admin" and not allowed("solicitudes") and not allowed("tesoreria"): abort(403)
+    if u.role!="admin" and not allowed("tesoreria"): abort(403)
     items=Record.query.filter_by(module="solicitudes").order_by(Record.created_at.asc()).all()
     parsed=[(r,json.loads(r.data or "{}")) for r in items]
     return render_template_string(BASE+"""
