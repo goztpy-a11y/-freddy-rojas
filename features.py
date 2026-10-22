@@ -45,28 +45,33 @@ def _page(title, body, **kwargs):
 @login_required
 def pagos_diarios():
     _can_caja()
-    rows=_rows("pagos_diarios")
-    if request.args.get("q"):
-        q=request.args["q"].strip().casefold()
-        rows=[r for r in rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
-    total=sum((Decimal(str(r.amount or 0)) for r in rows),Decimal("0"))
+    all_rows=_rows("pagos_diarios")
+    q=request.args.get("q","").strip().casefold()
+    month=request.args.get("mes",datetime.now().strftime("%Y-%m"))
+    today=datetime.now().strftime("%Y-%m-%d")
+    if q:
+        all_rows=[r for r in all_rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+    today_rows=[r for r in all_rows if _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))==today]
+    history=[r for r in all_rows if _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))[:7]==month]
+    total_today=sum((Decimal(str(r.amount or 0)) for r in today_rows),Decimal("0"))
+    total_history=sum((Decimal(str(r.amount or 0)) for r in history),Decimal("0"))
     return _page("Pagos diarios", """
-    <section class="card"><h2>Registrar pago diario</h2>
-    <form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
-    <div><label>Número de ticket</label><input name="ticket" required></div>
-    <div><label>Número de comprobante de este pago</label><input name="comprobante" required></div>
-    <div><label>Cliente / proveedor</label><input name="persona" required></div>
-    <div><label>Importe total del ticket/deuda (Gs.)</label><input name="total" type="number" min="0.01" step="0.01" required></div>
+    <section class="card"><h2>Registrar pago diario</h2><form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
+    <div><label>Número de ticket</label><input name="ticket" required></div><div><label>Número de comprobante de este pago</label><input name="comprobante" required></div>
+    <div><label>Cliente / proveedor</label><input name="persona" required></div><div><label>Importe total del ticket/deuda (Gs.)</label><input name="total" type="number" min="0.01" step="0.01" required></div>
     <div><label>Importe que se paga ahora (Gs.)</label><input name="pago" type="number" min="0.01" step="0.01" required></div>
     <div><label>Fecha del pago</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div>
     <div><label>Cuenta / referencia</label><input name="cuenta"></div><div><label>Concepto y observaciones</label><input name="detalle"></div>
     <div style="align-self:end"><button>Guardar pago</button></div></form></section>
-    <section class="card"><h2>Historial de pagos · Total registrado: Gs. {{total}}</h2>
-    <form method="get" class="actions"><input name="q" placeholder="Buscar ticket, persona, medio..." value="{{request.args.get('q','')}}"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
+    <section class="card"><h2>Pagos de hoy · {{today}} · Total: Gs. {{total_today}}</h2><button type="button" onclick="window.print()">Imprimir pagos de hoy</button>
     <table><tr><th>Fecha</th><th>Ticket</th><th>Comprobante</th><th>Persona</th><th>Total deuda</th><th>Pagó ahora</th><th>Saldo tras pago</th><th>Medio</th><th>Detalle</th></tr>
-    {% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('comprobante','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{r.amount}}</td><td>{{d.get('saldo','')}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('detalle','')}} {{d.get('cuenta','')}}</td></tr>{% endfor %}</table></section>
-    """,rows=rows,total=total,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    {% for r in today_rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('comprobante','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{r.amount}}</td><td>{{d.get('saldo','')}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('detalle','')}} {{d.get('cuenta','')}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial mensual de pagos · Total: Gs. {{total_history}}</h2><form method="get" class="grid"><div><label>Mes del historial</label><input name="mes" type="month" value="{{month}}"></div><div><label>Buscar ticket, comprobante, persona o importe</label><input name="q" value="{{q}}"></div><div style="align-self:end"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir historial</button></div></form>
+    <table><tr><th>Fecha</th><th>Ticket</th><th>Comprobante</th><th>Persona</th><th>Total deuda</th><th>Pagó ahora</th><th>Saldo tras pago</th><th>Medio</th><th>Detalle</th></tr>
+    {% for r in history %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('comprobante','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{r.amount}}</td><td>{{d.get('saldo','')}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('detalle','')}} {{d.get('cuenta','')}}</td></tr>{% endfor %}</table></section>
+    """,today_rows=today_rows,history=history,total_today=total_today,total_history=total_history,today=today,month=month,q=q,decode=_data)
+
 
 @app.post("/pagos-diarios/crear")
 @login_required
@@ -88,6 +93,9 @@ def crear_pago_diario():
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
     if previous:
+        if any(_data(r).get("persona","").strip().casefold()!=persona.casefold() for r in previous):
+            flash("Ese número de ticket ya pertenece a otro cliente/proveedor.")
+            return redirect(url_for("pagos_diarios"))
         old_total=Decimal(str(_data(previous[0]).get("total",total)))
         if old_total!=total:
             flash("El total ingresado no coincide con el total ya registrado para ese ticket.")
