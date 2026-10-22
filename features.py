@@ -175,9 +175,48 @@ def proveedores():
     <div><label>Nombre / razón social</label><input name="nombre" required></div><div><label>Cédula (opcional)</label><input name="cedula"></div><div><label>Teléfono</label><input name="telefono"></div><div><label>Dirección</label><input name="direccion"></div>
     {% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01"></div>{% endfor %}
     <div style="align-self:end"><button>Guardar proveedor</button></div></form>{% else %}<p>Solo Administración puede registrar o modificar proveedores y precios.</p>{% endif %}</section>
-    <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th></tr>
-    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td></tr>{% endfor %}</table></section>
-    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items})
+    <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th><th>Editar</th></tr>
+    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td><td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% endif %}</td></tr>{% endfor %}</table></section>
+    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items})
+
+
+@app.route("/proveedores/<int:rid>/editar",methods=["GET","POST"])
+@login_required
+def editar_proveedor(rid):
+    if current_user().role!="admin": abort(403)
+    rec=db.get_or_404(Record,rid)
+    if rec.module!="proveedores": abort(404)
+    d=_data(rec)
+    from app import Material
+    mats=Material.query.order_by(Material.name).all()
+    if request.method=="POST":
+        nombre=request.form.get("nombre","").strip()
+        if not nombre:
+            flash("El nombre del proveedor es obligatorio.")
+            return redirect(url_for("editar_proveedor",rid=rid))
+        prices={}
+        for key,val in request.form.items():
+            if key.startswith("precio_") and val.strip():
+                try:
+                    amount=Decimal(val.replace(",","."))
+                    if amount<0: raise InvalidOperation()
+                    prices[key[7:]]=str(amount)
+                except (InvalidOperation,ValueError):
+                    flash("Hay un precio no válido.")
+                    return redirect(url_for("editar_proveedor",rid=rid))
+        d.update({"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices})
+        rec.title=str(d.get("codigo",""))+" · "+nombre
+        rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=datetime.utcnow()
+        log_action("editar proveedor y precios","proveedores",rec.id,nombre)
+        db.session.commit()
+        flash("Proveedor y precios actualizados.")
+        return redirect(url_for("proveedores"))
+    return _page("Editar proveedor", """
+    <section class="card"><h2>Editar proveedor {{d.get('codigo')}}</h2><form method="post" class="grid">
+    <div><label>Nombre / razón social</label><input name="nombre" value="{{d.get('nombre','')}}" required></div><div><label>Cédula (opcional)</label><input name="cedula" value="{{d.get('cedula','')}}"></div><div><label>Teléfono</label><input name="telefono" value="{{d.get('telefono','')}}"></div><div><label>Dirección</label><input name="direccion" value="{{d.get('direccion','')}}"></div>
+    {% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01" value="{{d.get('precios_materiales',{}).get(m.id|string,'')}}"></div>{% endfor %}
+    <div style="align-self:end"><button>Guardar cambios</button> <a class="btn" href="{{url_for('proveedores')}}">Cancelar</a></div></form></section>
+    """,d=d,mats=mats)
 
 @app.get("/proveedores/movimiento/<path:nombre>")
 @login_required
@@ -261,7 +300,8 @@ def flota():
         if ed.get("tipo")=="Camión":
             truck_moves=[md for mr,md in moves if md.get("camion")==ed.get("nombre")]
             truck_fuel=[fd for fr,fd in fuel if fd.get("camion")==ed.get("nombre")]
-            truck_summaries.append({"nombre":ed.get("nombre"),"kg":sum((Decimal(str(md.get("kg",0))) for md in truck_moves),Decimal("0")),"litros":sum((Decimal(str(fd.get("litros",0))) for fd in truck_fuel),Decimal("0")),"count":len(truck_moves)})
+            truck_tires=[_data(gr) for gr in _rows("gomeria_camiones") if _data(gr).get("camion")==ed.get("nombre")]
+            truck_summaries.append({"nombre":ed.get("nombre"),"kg":sum((Decimal(str(md.get("kg",0))) for md in truck_moves),Decimal("0")),"litros":sum((Decimal(str(fd.get("litros",0))) for fd in truck_fuel),Decimal("0")),"gomeria":sum((Decimal(str(td.get("costo",0))) for td in truck_tires),Decimal("0")),"count":len(truck_moves)})
     return _page("Flota", """
     {% if user.role=='admin' %}<section class="card"><h2>Agregar camión o maquinaria</h2><form method="post" class="grid"><input type="hidden" name="accion" value="equipo">
     <div><label>Nombre / chapa / código</label><input name="camion" required></div><div><label>Tipo</label><select name="tipo"><option>Camión</option><option>Maquinaria</option></select></div>
@@ -269,8 +309,8 @@ def flota():
     <section class="card"><h2>Registrar retiro de mercadería</h2><form method="post" class="grid"><input type="hidden" name="accion" value="movimiento">
     <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r,d in equip %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
     <div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Kilogramos traídos</label><input type="number" name="kg" min="0" step="0.001" required></div><div><label>Material / carga</label><input name="material"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Registrar retiro</button></div></form></section>
-    <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg registrados</th><th>Combustible cargado (L)</th><th>Registros</th></tr>
-    {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg}}</td><td>{{s.litros}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg registrados</th><th>Combustible cargado (L)</th><th>Gomería (Gs.)</th><th>Registros</th></tr>
+    {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg}}</td><td>{{s.litros}}</td><td>{{s.gomeria}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
     """,equip=equip,moves=moves,fuel=fuel,truck_summaries=truck_summaries,today=datetime.now().strftime("%Y-%m-%d"))
 
 @app.route("/combustible-stock",methods=["GET","POST"])
