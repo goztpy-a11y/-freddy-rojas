@@ -316,6 +316,29 @@ tbody tr:hover td{background:#f5f9fc}
 .flash{background:#ecf8f4;border-color:#ccebe1;color:#176a59;border-radius:10px}
 @media(max-width:900px){header{height:68px;padding:0 16px}.sidebar{width:100%;padding:9px 12px}main{margin-left:0;padding:94px 15px 24px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}.sidebar{padding:8px 10px}main{padding:88px 10px 18px}.card{padding:15px}}
+
+/* Panel principal: indicadores y accesos de trabajo */
+.dashboard-heading,.section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dashboard-heading h2{font-size:28px;margin:2px 0 7px}.dashboard-heading p{margin:0;color:#718198}
+.dashboard-heading .eyebrow{font-size:10px;font-weight:850;letter-spacing:1.6px;color:#3975c5}
+.dashboard-date{padding:9px 13px;background:#f3f7fc;border:1px solid #e1eaf5;border-radius:9px;color:#415873;font-weight:750}
+.dashboard-metrics{grid-template-columns:repeat(auto-fit,minmax(185px,1fr));margin-top:22px}
+.dashboard-metrics>.metric-card{margin:0;padding:19px;border-top:3px solid #3978c9}
+.metric-card>span{display:block;color:#66778d;font-size:12px;font-weight:750}
+.metric-card>strong{display:block;font-size:34px;line-height:1.2;color:#183b65;margin:9px 0}
+.metric-card>small{display:block;color:#8290a2;font-size:11px}
+.metric-card>a{display:inline-block;margin-top:7px;font-size:12px;font-weight:750}
+.section-heading{margin-bottom:16px}.section-heading h2{margin:0}.section-heading>a{font-size:12px;font-weight:750}
+.quick-action-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.quick-action{display:flex;align-items:center;gap:12px;min-height:78px;padding:14px;background:#fff;border:1px solid #e2eaf3;border-radius:11px;color:#1e3654;transition:transform .15s,border-color .15s,box-shadow .15s}
+.quick-action:hover{transform:translateY(-2px);border-color:#a9c5ea;box-shadow:0 7px 18px rgba(29,67,112,.07);text-decoration:none}
+.quick-action-icon{display:grid;place-items:center;flex:0 0 37px;height:37px;border-radius:10px;background:#eaf2ff;color:#2e67b7;font-size:20px;font-weight:800}
+.quick-action>span:nth-child(2){flex:1;min-width:0}.quick-action strong,.quick-action small{display:block}
+.quick-action strong{font-size:13px;color:#213d60}.quick-action small{font-size:11px;color:#7b899a;margin-top:3px}
+.quick-action>b{color:#4279bf;font-size:16px}
+.status-pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#edf3fb;color:#385c87;font-size:11px;font-weight:750}
+.table-wrap{overflow-x:auto}
+@media(max-width:520px){.dashboard-heading h2{font-size:23px}.dashboard-date{font-size:12px}.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-metrics>.metric-card{padding:13px}.metric-card>strong{font-size:28px}.quick-action-grid{grid-template-columns:1fr}}
 </style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
@@ -376,17 +399,46 @@ def logout():
 def index():
     u = current_user()
     visible_modules = [key for key in MODULES if allowed(key)]
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
     records = Record.query.filter(Record.module.in_(visible_modules)).order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
+    material_count = Material.query.count() if u.role == "admin" or allowed("inventario") else None
+    active_users = User.query.filter_by(active=True).count() if u.role == "admin" else None
+    quick_actions = []
+    if u.role == "admin" or allowed("caja"):
+        quick_actions += [
+            ("Registrar pago", url_for("pagos_diarios"), "Cargar un pago o movimiento"),
+            ("Proveedores y precios", url_for("proveedores"), "Consultar y actualizar precios"),
+            ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
+    if u.role == "admin" or allowed("estacion"):
+        quick_actions += [
+            ("Camiones y retiros", url_for("flota"), "Consultar flota y retiros"),
+            ("Combustible", url_for("combustible_stock"), "Ver existencias y cargas"),
+            ("Mantenimiento", url_for("mantenimiento"), "Registrar servicios de flota")]
+    if u.role == "admin":
+        quick_actions += [
+            ("Informes", url_for("reports"), "Consultar e imprimir informes"),
+            ("Usuarios", url_for("users"), "Administrar accesos y permisos")]
+    elif allowed("auditoria"):
+        quick_actions.append(("Auditoría de pagos", url_for("auditoria_pagos"), "Revisar operaciones"))
     return render_template_string(BASE + """
-    <section class="card dashboard-overview"><h2>Resumen ejecutivo</h2>
-    {% if not config.get('DATABASE_URL') %}<p class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</p>{% endif %}
-    <div class="grid">{% if user.role=='admin' or allowed('tesoreria') %}<div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Ver autorizaciones&nbsp; →</a></p></div>{% endif %}
-    {% if user.role=='admin' %}<div class="card"><h3>Cuentas empresariales activas</h3><strong>{{accounts|length}}</strong><p><a href="{{url_for('module_page',module='cuentas_empresa')}}">Consultar cuentas&nbsp; →</a></p></div>{% endif %}
-    {% if user.role=='admin' %}<div class="card"><h3>Movimientos recientes</h3><strong>{{records|length}}</strong><p><a href="#ultimos-movimientos">Ver actividad&nbsp; →</a></p></div>{% endif %}</div></section>
-    {% if user.role=='admin' %}<section class="card" id="ultimos-movimientos"><h2>Actividad reciente</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>{% endif %}
-    </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Inicio", pending=pending, accounts=accounts, records=records)
+    <section class="card dashboard-overview">
+      <div class="dashboard-heading"><div><p class="eyebrow">CENTRO DE CONTROL</p><h2>Panel principal</h2><p>Resumen operativo y accesos directos según tus permisos.</p></div><div class="dashboard-date">{{now.strftime('%d/%m/%Y')}}</div></div>
+      {% if not config.get('DATABASE_URL') %}<p class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</p>{% endif %}
+      <div class="grid dashboard-metrics">
+        <div class="card metric-card"><span>Operaciones de hoy</span><strong>{{today_count}}</strong><small>Registros de tus áreas habilitadas</small></div>
+        {% if user.role=='admin' or allowed('tesoreria') %}<div class="card metric-card"><span>Solicitudes pendientes</span><strong>{{pending}}</strong><a href="{{url_for('approvals')}}">Revisar autorizaciones →</a></div>{% endif %}
+        {% if material_count is not none %}<div class="card metric-card"><span>Materiales registrados</span><strong>{{material_count}}</strong><a href="{{url_for('module_page',module='materiales')}}">Consultar materiales →</a></div>{% endif %}
+        {% if user.role=='admin' %}<div class="card metric-card"><span>Cuentas empresariales activas</span><strong>{{accounts|length}}</strong><a href="{{url_for('module_page',module='cuentas_empresa')}}">Consultar cuentas →</a></div><div class="card metric-card"><span>Usuarios activos</span><strong>{{active_users}}</strong><a href="{{url_for('users')}}">Administrar usuarios →</a></div>{% endif %}
+      </div>
+    </section>
+    <section class="card dashboard-actions"><div class="section-heading"><h2>Accesos rápidos</h2><span>Funciones más utilizadas</span></div>
+      <div class="grid quick-action-grid">{% for label,href,description in quick_actions %}<a class="quick-action" href="{{href}}"><span class="quick-action-icon">↗</span><span><strong>{{label}}</strong><small>{{description}}</small></span><b>→</b></a>{% endfor %}</div>
+    </section>
+    {% if user.role=='admin' %}<section class="card" id="ultimos-movimientos"><div class="section-heading"><h2>Actividad reciente</h2><a href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</table></div>{% else %}<p>Todavía no hay registros.</p>{% endif %}</section>{% endif %}
+    </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Panel principal", pending=pending, accounts=accounts, records=records, today_count=today_count, material_count=material_count, active_users=active_users, quick_actions=quick_actions)
 
 @app.get("/area/<section>")
 @login_required
