@@ -834,12 +834,12 @@ def users():
         password=request.form.get("password","")
         role=request.form.get("role","caja")
         areas=request.form.getlist("areas")
-        if not username or len(password)<10 or role not in AREAS:
+        if not username or len(password)<10 or role not in AREAS or role=="admin":
             flash("Usuario requerido, contraseña mínima de 10 caracteres y área válida.")
         elif User.query.filter_by(username=username).first():
             flash("Ese usuario ya existe.")
         else:
-            areas=list(dict.fromkeys(areas+[role]))
+            areas=[a for a in dict.fromkeys(areas+[role]) if a in AREAS and a!="admin"]
             u=User(username=username,password_hash=generate_password_hash(password),role=role,areas=",".join(areas))
             db.session.add(u); db.session.flush(); log_action("crear usuario","usuarios",u.id,f"{username}; rol {role}; áreas {u.areas}")
             db.session.commit(); flash("Usuario creado."); return redirect(url_for("users"))
@@ -847,8 +847,70 @@ def users():
     return render_template_string(BASE+"""
     <section class="card"><h2>Usuarios y permisos</h2>
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="password" minlength="10" required></div>
-    <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
-    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{u.areas}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+    <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k != 'admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
+    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{', '.join(AREAS.get(a,a) for a in (u.areas or '').split(',') if a)}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+
+
+@app.route("/usuarios/<int:uid>/editar",methods=["GET","POST"])
+@admin_required
+def edit_user(uid):
+    u=db.get_or_404(User,uid)
+    if request.method=="POST":
+        username=request.form.get("username","").strip()
+        role=request.form.get("role","caja")
+        areas=request.form.getlist("areas")
+        password=request.form.get("password","")
+        duplicate=User.query.filter(User.username==username,User.id!=u.id).first()
+        if not username or duplicate or role not in AREAS or (role=="admin" and u.role!="admin"):
+            flash("Revisá el nombre de usuario y el área principal.")
+        else:
+            if u.role=="admin" and role!="admin" and User.query.filter_by(role="admin",active=True).count()<=1:
+                flash("No se puede quitar el rol al único administrador activo.")
+                return redirect(url_for("edit_user",uid=u.id))
+            active_value=request.form.get("active")=="on"
+            if u.id==current_user().id and not active_value:
+                flash("No podés desactivar tu propia cuenta.")
+                return redirect(url_for("edit_user",uid=u.id))
+            if password and len(password)<10:
+                flash("La nueva contraseña debe tener al menos 10 caracteres.")
+                return redirect(url_for("edit_user",uid=u.id))
+            u.username=username; u.role=role
+            areas=[a for a in dict.fromkeys(areas+[role]) if a in AREAS]
+            if role=="admin": areas=list(AREAS.keys())
+            u.areas=",".join(areas); u.active=active_value
+            if password: u.password_hash=generate_password_hash(password)
+            db.session.flush()
+            log_action("editar usuario","usuarios",u.id,f"Usuario {u.username}; rol {u.role}; áreas {u.areas}; activo {u.active}; contraseña {'actualizada' if password else 'sin cambios'}")
+            db.session.commit(); flash("Usuario actualizado.")
+            return redirect(url_for("users"))
+    selected=(u.areas or "").split(",")
+    return render_template_string(BASE+"""
+    <section class="card" style="max-width:760px"><h2>Editar usuario: {{u.username}}</h2>
+    <form method="post"><label>Nombre de usuario</label><input name="username" value="{{u.username}}" required>
+    <label>Rol principal</label><select name="role">{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<option value="{{k}}" {% if u.role==k %}selected{% endif %}>{{v}}</option>{% endif %}{% endfor %}</select>
+    <label>Áreas permitidas</label>{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}" {% if k in selected %}checked{% endif %}> {{v}}</label>{% endif %}{% endfor %}
+    <label>Nueva contraseña (opcional; dejar vacío para conservarla)</label><input type="password" name="password" minlength="10">
+    <label><input style="width:auto" type="checkbox" name="active" {% if u.active %}checked{% endif %}> Usuario activo</label>
+    <p class="actions"><button class="btn">Guardar cambios</button> <a class="btn" href="{{url_for('users')}}">Cancelar</a></p></form></section></main><footer>El Toro S.A.</footer></body></html>""",title="Editar usuario",u=u,selected=selected)
+
+
+@app.post("/usuarios/<int:uid>/eliminar")
+@admin_required
+def delete_user(uid):
+    u=db.get_or_404(User,uid)
+    if u.id==current_user().id:
+        flash("No podés eliminar tu propia cuenta.")
+        return redirect(url_for("users"))
+    if u.role=="admin" and u.active and User.query.filter_by(role="admin",active=True).count()<=1:
+        flash("No se puede eliminar al único administrador activo.")
+        return redirect(url_for("users"))
+    username=u.username
+    # Desactivar en lugar de borrar físicamente para conservar la trazabilidad histórica.
+    u.active=False
+    log_action("desactivar usuario","usuarios",u.id,f"Desactivado por {current_user().username}; usuario {username}")
+    db.session.commit()
+    flash("Usuario desactivado; se conservan los registros históricos.")
+    return redirect(url_for("users"))
 
 
 @app.route("/mi-cuenta/contrasena", methods=["GET","POST"])
