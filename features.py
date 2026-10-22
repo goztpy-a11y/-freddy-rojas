@@ -462,9 +462,11 @@ def auditoria_pagos():
     rows=[]
     for mod in modules:
         for r in _rows(mod):
+            d=_data(r)
             if q and q not in (r.title+" "+r.data+" "+str(r.amount)).casefold(): continue
-            if start and r.created_at.strftime("%Y-%m-%d")<start: continue
-            if end and r.created_at.strftime("%Y-%m-%d")>end: continue
+            record_date=str(d.get("fecha") or r.created_at.strftime("%Y-%m-%d"))[:10]
+            if start and record_date<start: continue
+            if end and record_date>end: continue
             rows.append(r)
     # Incluir todas las salidas reales de dinero y pagos ejecutados; no las solicitudes pendientes ni las cuentas por cobrar.
     rows=[r for r in rows if r.module not in ("solicitudes","cuentas_pagar") or r.status in ("Pagado","Pago parcial","Desembolsado")]
