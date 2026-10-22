@@ -197,8 +197,10 @@ def proveedores():
     <div><label>RUC / cédula (opcional)</label><input name="cedula"></div>
     <div><label>Teléfono</label><input name="telefono"></div>
     <div><label>Dirección</label><input name="direccion"></div>
-    <div style="grid-column:1/-1"><h3>Precios por material</h3><p>La lista se actualiza con los materiales registrados por el administrador. Dejá vacío el precio de los materiales que este proveedor no ofrece.</p></div>
-    {% for m in mats %}<div><label>{{m.name}} — precio</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01" placeholder="Precio por unidad"></div>{% else %}<p>Todavía no hay materiales. El administrador debe registrar los materiales primero.</p>{% endfor %}
+    <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><p>Ingresá el precio que este proveedor paga por cada material. Cada proveedor conserva sus propios precios; podés dejar vacío el material que no ofrece.</p>
+    <div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
+    {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" placeholder="Ingresar precio" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales. Registrá primero los materiales.</td></tr>{% endfor %}
+    </table></div></div>
     <div style="align-self:end"><button class="btn">Guardar proveedor y precios</button></div>
     </form></section>
     <section class="card"><p>Para consultar el listado completo, ingresá en <a href="{{url_for('listado_proveedores')}}">Proveedores</a>.</p></section>
@@ -257,7 +259,9 @@ def editar_proveedor(rid):
     return _page("Editar proveedor", """
     <section class="card"><h2>Editar proveedor {{d.get('codigo')}}</h2><form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" value="{{d.get('nombre','')}}" required></div><div><label>Cédula (opcional)</label><input name="cedula" value="{{d.get('cedula','')}}"></div><div><label>Teléfono</label><input name="telefono" value="{{d.get('telefono','')}}"></div><div><label>Dirección</label><input name="direccion" value="{{d.get('direccion','')}}"></div>
-    {% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01" value="{{d.get('precios_materiales',{}).get(m.id|string,'')}}"></div>{% endfor %}
+    <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
+    {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" value="{{d.get('precios_materiales',{}).get(m.id|string,'')}}" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales registrados.</td></tr>{% endfor %}
+    </table></div></div>
     <div style="align-self:end"><button>Guardar cambios</button> <a class="btn" href="{{url_for('proveedores')}}">Cancelar</a></div></form></section>
     """,d=d,mats=mats)
 
