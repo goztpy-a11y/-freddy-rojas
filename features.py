@@ -8,6 +8,8 @@ from app import app, db, Record, MODULES, current_user, allowed, login_required,
 MODULES.update({
     "pagos_diarios": ("Pagos diarios y por ticket", "caja", []),
     "prestamos": ("Préstamos", "caja", []),
+    "prestamos_pagos": ("Pagos de préstamos", "caja", []),
+    "pagos_cuentas": ("Movimientos de pagos", "tesoreria", []),
     "proveedores": ("Proveedores y precios asignados", "caja", []),
     "planillas": ("Cuenta de proveedores", "caja", []),
     "fletes": ("Fletes", "caja", []),
