@@ -189,7 +189,7 @@ def admin_required(fn):
 
 BASE = """
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title }} · El Toro S.A.</title><style>
+<title>{{ title }} · Freddy Rojas</title><style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#182536;background:#f3f6fa;font-synthesis:none;text-rendering:optimizeLegibility}
 *{box-sizing:border-box}html{min-height:100%;background:#f3f6fa}body{margin:0;min-height:100vh;background:#f3f6fa;color:#182536;font-size:14px;line-height:1.5}
 a{color:#2459a9;text-decoration:none}a:hover{color:#153d7a;text-decoration:underline}
@@ -287,9 +287,38 @@ input:focus,select:focus,textarea:focus{outline:3px solid rgba(52,117,205,.15);b
 .area-link-copy small{font-size:12px;line-height:1.4;color:#738399}
 .area-arrow{margin-left:auto;font-size:19px;color:#7e9abc}
 @media(max-width:700px){.area-grid{grid-template-columns:1fr}.area-hero{padding:23px 20px}.area-link{min-height:78px}.nav-caption{display:none}}
-</style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
+/* Acabado profesional de la plataforma Freddy Rojas */
+:root{--fr-navy:#12263f;--fr-blue:#2864ad;--fr-teal:#168d93;--fr-line:#e1e8f0}
+html,body{background:#f4f7fb}
+header{height:74px;box-shadow:0 2px 12px rgba(16,38,63,.045);border-bottom-color:#e3eaf2;padding:0 28px}
+header strong{font-size:19px;letter-spacing:-.55px;color:var(--fr-navy)}
+.sidebar{background:linear-gradient(180deg,#12263f 0%,#183654 100%);width:252px;padding:22px 14px}
+.sidebar-brand{padding:6px 9px 23px;margin-bottom:18px}
+.brand-mark{width:42px;height:42px;border-radius:12px;background:linear-gradient(145deg,#27a4a6,#2864ad);box-shadow:0 5px 14px rgba(5,20,40,.24);font-size:15px;letter-spacing:.5px}
+.brand-copy strong{font-size:14px;letter-spacing:.7px}
+nav{gap:4px}
+nav a{min-height:42px;padding:10px 12px;border-radius:9px;border:1px solid transparent;color:#d0dcec;font-size:13px}
+nav a:first-child{margin-bottom:0;background:transparent;border-color:transparent;color:#d0dcec}
+nav a:hover{background:rgba(255,255,255,.075);border-color:rgba(255,255,255,.07);transform:none}
+.card{border:1px solid var(--fr-line);border-radius:14px;box-shadow:0 5px 18px rgba(23,47,76,.035);padding:23px}
+h1,h2,h3,h4{color:var(--fr-navy)}
+main>section:first-of-type>h2{font-size:26px;letter-spacing:-.8px}
+main>section.card>h2:before{background:linear-gradient(180deg,#24a4a5,#3476c0)}
+label{font-size:12px;letter-spacing:.1px;color:#3c5068}
+input,select,textarea{border-color:#d7e0eb!important;border-radius:9px!important;min-height:43px}
+input:focus,select:focus,textarea:focus{border-color:#3987bc!important;box-shadow:0 0 0 3px rgba(36,139,161,.12);outline:0}
+button,.btn{background:#245fa8;border-color:#245fa8;border-radius:9px;min-height:41px;padding:10px 15px;box-shadow:none}
+button:hover,.btn:hover{background:#194b86;border-color:#194b86;box-shadow:0 4px 10px rgba(26,75,134,.15)}
+table{border-color:#e4ebf3;border-radius:10px;font-variant-numeric:tabular-nums}
+th{background:#f3f7fb;color:#53667d;font-size:10px;letter-spacing:.65px;padding:13px 14px}
+td{padding:13px 14px;color:#31455e}
+tbody tr:hover td{background:#f5f9fc}
+.flash{background:#ecf8f4;border-color:#ccebe1;color:#176a59;border-radius:10px}
+@media(max-width:900px){header{height:68px;padding:0 16px}.sidebar{width:100%;padding:9px 12px}main{margin-left:0;padding:94px 15px 24px}}
+@media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}.sidebar{padding:8px 10px}main{padding:88px 10px 18px}.card{padding:15px}}
+</style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
-{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
+{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial</a>{% endif %}
 {% if user.role=='admin' %}
