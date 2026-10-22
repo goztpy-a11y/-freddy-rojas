@@ -260,7 +260,7 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
-<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a><a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial general</a><a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a><a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and (user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',')) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
+<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a><a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial general</a><a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a><a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and (user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',')) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
 
@@ -541,7 +541,8 @@ def module_page(module):
         {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,items=items,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
-        payment_rows=Record.query.filter_by(module="pagos_cuentas").order_by(Record.created_at.desc()).all()
+        payment_module="cobros_cuentas" if module=="cuentas_cobrar" else "pagos_cuentas"
+        payment_rows=Record.query.filter(Record.module.in_(["pagos_cuentas","cobros_cuentas"])).order_by(Record.created_at.desc()).all()
         originals=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all()
         if request.method=="POST":
             action=request.form.get("accion","crear")
@@ -552,20 +553,23 @@ def module_page(module):
                     amount=Decimal(request.form.get("importe","").replace(",","."))
                     original_data=json.loads(original.data or "{}")
                     paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
-                              if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
+                              if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
                     balance=original.amount-paid
                     if amount<=0 or amount>balance: raise InvalidOperation()
                     paydata={"modulo_origen":module,"registro_id":rid,"fecha":request.form.get("fecha",""),
                         "beneficiario":original_data.get("beneficiario",original_data.get("cliente","")),
                         "concepto":original_data.get("concepto",""),"numero_cheque":original_data.get("numero",""),
                         "importe":str(amount),"medio":request.form.get("medio","Efectivo"),"detalle":request.form.get("detalle","")}
-                    pay=Record(module="pagos_cuentas",title="Pago · "+original.title,data=json.dumps(paydata,ensure_ascii=False),
-                        amount=amount,status="Pagado",created_by=current_user().id)
+                    is_collection=(module=="cuentas_cobrar")
+                    pay_title=("Cobro · " if is_collection else "Pago · ")+original.title
+                    pay=Record(module=payment_module,title=pay_title,data=json.dumps(paydata,ensure_ascii=False),
+                        amount=amount,status="Cobrado" if is_collection else "Pagado",created_by=current_user().id)
                     db.session.add(pay); db.session.flush()
                     new_balance=balance-amount
-                    original.status="Pagado" if new_balance==0 else "Pago parcial"
-                    log_action("registrar pago parcial/final",module,original.id,f"Pago {amount}; saldo {new_balance}; medio {paydata['medio']}")
-                    log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title+"; importe "+str(amount))
+                    original.status="Pagado" if new_balance==0 else ("Pago parcial" if not is_collection else "En proceso")
+                    log_action("registrar cobro" if is_collection else "registrar pago parcial/final",module,original.id,f"Importe {amount}; saldo {new_balance}; medio {paydata['medio']}")
+                    if not is_collection:
+                        log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title+"; importe "+str(amount))
                     db.session.commit(); flash("Pago registrado. Saldo restante: Gs. "+str(new_balance))
                 except (InvalidOperation,ValueError):
                     db.session.rollback(); flash("No se pudo registrar: verificá el importe y el saldo pendiente.")
@@ -576,7 +580,7 @@ def module_page(module):
                     if original.module!="cheques" or original.status=="Desembolsado": abort(400)
                     d=json.loads(original.data or "{}")
                     paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
-                              if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
+                              if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
                     balance=original.amount-paid
                     paydata={"modulo_origen":module,"registro_id":rid,"fecha":datetime.now().strftime("%Y-%m-%d"),
                         "beneficiario":d.get("beneficiario",""),"concepto":"Desembolso de cheque "+d.get("numero",""),
