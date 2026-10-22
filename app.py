@@ -700,6 +700,14 @@ def module_page(module):
                     spare_data=candidate_data
                     break
             movement=data.get("tipo","").strip().lower()
+            if not spare_record:
+                db.session.rollback()
+                flash("Ese repuesto no está registrado. Cargalo primero en Inventario de puesto hidráulico.")
+                return redirect(url_for("module_page",module=module))
+            if movement not in ("entrada","uso","salida"):
+                db.session.rollback()
+                flash("Seleccioná Entrada, Uso o Salida.")
+                return redirect(url_for("module_page",module=module))
             if spare_record and movement in ("uso","salida"):
                 try: available=Decimal(str(spare_data.get("stock","0")).replace(",","."))
                 except InvalidOperation: available=Decimal("0")
