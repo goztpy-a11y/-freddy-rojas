@@ -146,7 +146,13 @@ def log_action(action, module, record_id=None, detail=""):
 
 def allowed(module):
     user = current_user()
-    return bool(user and (user.role == "admin" or module in (user.areas or "").split(",")))
+    if not user:
+        return False
+    if user.role == "admin":
+        return True
+    assigned = (user.areas or "").split(",")
+    required_area = MODULES.get(module, (None, module))[1]
+    return module in assigned or required_area in assigned
 
 def login_required(fn):
     @wraps(fn)
