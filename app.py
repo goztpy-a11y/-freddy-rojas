@@ -49,12 +49,9 @@ MODULES = {
  "gastos": ("Gastos", "caja", [
   ("fecha","Fecha del gasto","date",True),("categoria","Categoría","text",True),("detalle","Detalle completo","text",True),
   ("importe","Importe","number",True),("medio","Medio de pago / cuenta utilizada","text",False),("comprobante","Comprobante","text",False)]),
- "compras": ("Compras", "inventario", [
-  ("proveedor","Proveedor","text",True),("material","Material","text",True),("cantidad","Cantidad ingresada","number",True),
-  ("precio_unitario","Precio unitario","number",True),("tipo_cambio","Tipo de cambio a PYG si aplica","number",False),("comprobante","Comprobante","text",False)]),
- "ventas": ("Ventas y salidas", "inventario", [
-  ("cliente","Cliente","text",True),("material","Material","text",True),("cantidad","Cantidad vendida / salida","number",True),
-  ("precio_unitario","Precio unitario","number",True),("moneda","Moneda (PYG / USD)","text",True),("tipo_cambio","Tipo de cambio usado","number",False),("destino","Destino / envío","text",False)]),
+ "ventas": ("Venta", "inventario", [
+  ("fecha","Fecha","date",True),("destino","Empresa / destino","text",True),("material","Material","text",True),
+  ("cantidad","Kilogramos","number",True),("chofer","Chofer","text",True),("camion","Camión","text",True)]),
  "cuentas_pagar": ("Cuentas por pagar", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
@@ -68,8 +65,9 @@ MODULES = {
   ("camion","Camión / chapa / código","text",True),("litros","Cantidad cargada (litros)","number",True),
   ("fecha","Fecha y hora de carga","datetime-local",True),("responsable","Responsable","text",False)]),
  "gomeria": ("Gomería y servicios", "gomeria", [
-  ("camion","Camión / chapa / código","text",True),("servicio","Trabajo realizado","text",True),("repuesto","Repuesto utilizado","text",False),
-  ("cantidad","Cantidad","number",False),("responsable","Responsable","text",False),("observaciones","Observaciones","text",False)]),
+  ("fecha","Fecha","date",True),("camion","Camión / chapa / código","text",True),("servicio","Tipo de servicio","select",True),
+  ("detalle","Descripción del trabajo","text",True),("cantidad","Cantidad (si aplica)","number",False),("costo","Costo pagado (Gs., opcional)","number",False),
+  ("responsable","Responsable","text",False),("observaciones","Observaciones","text",False)]),
  "repuestos": ("Inventario de repuestos hidráulicos", "inventario", [
   ("nombre","Repuesto","text",True),("codigo","Código / referencia","text",False),("stock","Stock disponible","number",True),
   ("stock_minimo","Stock mínimo","number",False),("ubicacion","Ubicación","text",False)]),
@@ -327,7 +325,7 @@ def module_page(module):
             name=request.form.get("nombre","").strip()
             minor=request.form.get("precio_minorista","").strip().replace(",",".")
             major=request.form.get("precio_mayorista","").strip().replace(",",".")
-            if not name or (not minor and not major): flash("Ingresá el nombre y al menos uno de los precios.")
+            if not name: flash("Ingresá el nombre del material.")
             elif Material.query.filter(db.func.lower(Material.name)==name.lower()).first(): flash("Ese material ya existe. Actualizá sus precios desde el listado.")
             else:
                 try:
@@ -611,11 +609,6 @@ def module_page(module):
             data=json.dumps(data,ensure_ascii=False),amount=amount,status=status,created_by=current_user().id)
         db.session.add(r); db.session.flush()
         log_action("crear registro",module,r.id,r.title)
-        if module == "compras":
-            mat=Material.query.filter(db.func.lower(Material.name)==data.get("material","").lower()).first()
-            if mat:
-                try: mat.stock += Decimal(data.get("cantidad","0").replace(",","."))
-                except InvalidOperation: pass
         if module == "ventas":
             mat=Material.query.filter(db.func.lower(Material.name)==data.get("material","").lower()).first()
             if mat:
@@ -681,7 +674,8 @@ def module_page(module):
     {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
     {% if kind=='checkbox' %}<label class="check-field"><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Sí, incluye cheque adelantado</label>
     {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
-    {% elif kind=='select' and module=='cheques' %}<select name="{{key}" required><option>Pendiente</option><option>Desembolsado</option></select>
+    {% elif kind=='select' and module=='cheques' %}<select name="{{key}}" required><option>Pendiente</option><option>Desembolsado</option></select>
+     {% elif kind=='select' and module=='gomeria' %}<select name="{{key}}" required><option value="Reparación de cubierta">Reparación de cubierta</option><option value="Cambio de cubierta">Cambio de cubierta</option><option value="Reparación de cámara">Reparación de cámara</option><option value="Cambio de cámara">Cambio de cámara</option><option value="Otro">Otro</option></select>
     {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001"{% endif %}>{% endif %}</div>{% endfor %}
     <div style="align-self:end"><button class="btn">Guardar registro</button></div></form>
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
