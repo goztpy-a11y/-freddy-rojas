@@ -163,6 +163,8 @@ def prestamos():
 @login_required
 def proveedores():
     _can_caja()
+    from app import Material
+    mats=Material.query.order_by(Material.name).all()
     if request.method=="POST":
         nombre=request.form.get("nombre","").strip()
         if not nombre:
@@ -172,29 +174,52 @@ def proveedores():
             flash("Ese proveedor ya está registrado."); return redirect(url_for("proveedores"))
         code="PROV-"+str(len(existing)+1).zfill(5)
         prices={}
-        if current_user().role=="admin":
-            for key,val in request.form.items():
-                if key.startswith("precio_") and val.strip():
-                    try:
-                        price=Decimal(val.replace(",","."))
-                        if price<0: raise InvalidOperation()
-                        prices[key[7:]]=str(price)
-                    except (InvalidOperation,ValueError):
-                        flash("Hay un precio inválido."); return redirect(url_for("proveedores"))
+        valid_ids={str(m.id) for m in mats}
+        for key,val in request.form.items():
+            if key.startswith("precio_") and val.strip():
+                mid=key[7:]
+                if mid not in valid_ids:
+                    flash("Se recibió un material no válido."); return redirect(url_for("proveedores"))
+                try:
+                    price=Decimal(val.replace(",","."))
+                    if price<0: raise InvalidOperation()
+                    prices[mid]=str(price)
+                except (InvalidOperation,ValueError):
+                    flash("Hay un precio inválido."); return redirect(url_for("proveedores"))
         _save("proveedores",code+" · "+nombre,{"codigo":code,"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices},0,"Activo")
-        flash("Proveedor registrado con código "+code)
+        flash("Proveedor registrado con código "+code+" y precios guardados.")
         return redirect(url_for("proveedores"))
+    return _page("Proveedores y precios", """
+    <section class="card"><h2>Registrar proveedor y precios por material</h2>
+    <form method="post" class="grid">
+    <div><label>Nombre / razón social</label><input name="nombre" required></div>
+    <div><label>RUC / cédula (opcional)</label><input name="cedula"></div>
+    <div><label>Teléfono</label><input name="telefono"></div>
+    <div><label>Dirección</label><input name="direccion"></div>
+    <div style="grid-column:1/-1"><h3>Precios por material</h3><p>La lista se actualiza con los materiales registrados por el administrador. Dejá vacío el precio de los materiales que este proveedor no ofrece.</p></div>
+    {% for m in mats %}<div><label>{{m.name}} — precio</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01" placeholder="Precio por unidad"></div>{% else %}<p>Todavía no hay materiales. El administrador debe registrar los materiales primero.</p>{% endfor %}
+    <div style="align-self:end"><button class="btn">Guardar proveedor y precios</button></div>
+    </form></section>
+    <section class="card"><p>Para consultar el listado completo, ingresá en <a href="{{url_for('listado_proveedores')}}">Proveedores</a>.</p></section>
+    """,mats=mats)
+
+
+@app.get("/listado-proveedores")
+@login_required
+def listado_proveedores():
+    _can_caja()
     items=[(r,_data(r)) for r in _rows("proveedores")]
     from app import Material
     mats=Material.query.order_by(Material.name).all()
+    last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
     return _page("Proveedores", """
-    <section class="card"><h2>Registrar proveedor</h2><form method="post" class="grid">
-    <div><label>Nombre / razón social</label><input name="nombre" required></div><div><label>Cédula (opcional)</label><input name="cedula"></div><div><label>Teléfono</label><input name="telefono"></div><div><label>Dirección</label><input name="direccion"></div>
-    {% if user.role=='admin' %}{% for m in mats %}<div><label>Precio de {{m.name}} (opcional)</label><input name="precio_{{m.id}}" type="number" min="0" step="0.01"></div>{% endfor %}{% endif %}
-    <div style="align-self:end"><button>Guardar proveedor</button></div></form><p>Solo Administración puede modificar los precios.</p></section></section>
-    <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th><th>Editar</th></tr>
-    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td><td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% endif %}</td></tr>{% endfor %}</table></section>
-    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items})
+    <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
+    <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
+    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td>
+    <td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}{% if not d.get('precios_materiales') %}—{% endif %}</td>
+    <td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td>
+    <td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
+    """,items=items,mats=mats,last=last)
 
 
 @app.route("/proveedores/<int:rid>/editar",methods=["GET","POST"])
