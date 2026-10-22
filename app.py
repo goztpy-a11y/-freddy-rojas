@@ -376,7 +376,8 @@ def admin_section(section):
         ("Fletes", url_for("fletes"), "Control de fletes"),
         ("Tickets de entrada", url_for("module_page",module="tickets"), "Registrar y consultar tickets"),
         ("Solicitudes de pago", url_for("module_page",module="solicitudes"), "Solicitudes para autorización"),
-        ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa")]),
+        ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa"),
+        ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica")]),
       "estacion": ("Estación de servicio", "FLOTA Y COMBUSTIBLE", "Camiones, combustible, retiros y mantenimiento.", [
         ("Camiones y retiros", url_for("flota"), "Vehículos y retiros"),
         ("Stock de combustible", url_for("combustible_stock"), "Existencias y cargas"),
@@ -536,7 +537,7 @@ def module_page(module):
                     lines.append({"material":mat.name,"cantidad":str(qty),"tipo_precio":price_type,"precio":str(price),"total":str(line_total)})
                 except (InvalidOperation,ValueError): flash("Cada material debe tener una cantidad mayor que cero."); return redirect(url_for("module_page",module=module))
             if not lines: flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
-            data={"cliente":client,"materiales":lines,"tipo_precio":price_type,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"total":str(total)}
+            data={"cliente":client,"materiales":lines,"tipo_precio":price_type,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush(); log_action("crear ticket de entrada","tickets",rec.id,f"{client}; total {total}"); db.session.commit()
             flash("Ticket guardado."); return redirect(url_for("module_page",module=module))
@@ -545,11 +546,11 @@ def module_page(module):
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><form method="post" id="ticket-form"><div class="grid">
         <div><label>Cliente / proveedor</label><input name="cliente" required></div><div><label>Tipo de precio</label><select name="tipo_precio"><option value="minorista">Minorista</option><option value="mayorista">Mayorista</option></select></div>
-        <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div></div>
+        <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
         <h3>Materiales del ticket</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><button class="btn">Guardar ticket</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>function addTicketLine(){const root=document.getElementById('ticket-lines');const first=root.querySelector('.ticket-line');const copy=first.cloneNode(true);copy.querySelector('select').value='';copy.querySelector('input').value='';copy.querySelector('select').required=false;copy.querySelector('input').required=false;root.appendChild(copy)}</script>
         </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q)
     if module == "auditoria" and request.method == "GET":
@@ -645,8 +646,13 @@ def module_page(module):
                 db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
             return redirect(url_for("module_page",module="gastos"))
         items=Record.query.filter_by(module="gastos").order_by(Record.created_at.desc()).all()
+        tickets_gasto=[r for r in Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all() if json.loads(r.data or "{}").get("destino_pago")=="gastos"]
+        caja_chica_gastos=[r for r in Record.query.filter_by(module="caja_chica").order_by(Record.created_at.desc()).all() if json.loads(r.data or "{}").get("tipo")=="gasto" and json.loads(r.data or "{}").get("clasificacion")=="gastos"]
+        total_gastos=sum((Decimal(str(r.amount or 0)) for r in items+tickets_gasto+caja_chica_gastos),Decimal("0"))
         q=request.args.get("q","").strip().casefold()
         items=[r for r in items if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+        tickets_gasto=[r for r in tickets_gasto if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+        caja_chica_gastos=[r for r in caja_chica_gastos if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
@@ -657,10 +663,13 @@ def module_page(module):
         </div></div><p><button type="button" onclick="addGastoItem()">+ Agregar artículo</button></p></div>
         <div style="align-self:end"><button>Guardar gasto</button></div></form>
         <script>function addGastoItem(){const root=document.getElementById('gasto-items');const row=root.querySelector('.gasto-item').cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');root.appendChild(row)}</script></section>
+        <section class="card"><h2>Resumen de gastos · Total: Gs. {{total_gastos}}</h2><p>Incluye los gastos registrados aquí y los tickets clasificados como Gastos. Los tickets clasificados como Pago de materiales y los movimientos de caja chica marcados solo como Caja chica no se suman.</p></section>
         <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
-        <table><tr><th>Fecha</th><th>Categoría</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Imprimir</th></tr>
-        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,items=items,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+        <table><tr><th>Fecha</th><th>Origen</th><th>Categoría / proveedor</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Imprimir</th></tr>
+        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{r.created_at.strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
         payment_module="cobros_cuentas" if module=="cuentas_cobrar" else "pagos_cuentas"
         payment_rows=Record.query.filter(Record.module.in_(["pagos_cuentas","cobros_cuentas"])).order_by(Record.created_at.desc()).all()
