@@ -449,6 +449,49 @@ def module_page(module):
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
         <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{x.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
+    if module == "repuestos":
+        if request.method=="POST":
+            name=request.form.get("nombre","").strip()
+            code=request.form.get("codigo","").strip()
+            location=request.form.get("ubicacion","").strip()
+            try:
+                qty=Decimal(request.form.get("stock","").replace(",","."))
+                minimum=Decimal(request.form.get("stock_minimo","0").replace(",",".") or "0")
+                if not name or qty<0 or minimum<0: raise InvalidOperation()
+                latest=None; current=Decimal("0")
+                for candidate in Record.query.filter_by(module="repuestos").order_by(Record.created_at.desc()).all():
+                    d=json.loads(candidate.data or "{}")
+                    if d.get("nombre","").strip().casefold()==name.casefold():
+                        latest=candidate
+                        current=Decimal(str(d.get("stock","0")))
+                        break
+                newstock=current+qty
+                data={"nombre":name,"codigo":code,"stock":str(newstock),"stock_minimo":str(minimum),"ubicacion":location,"cantidad_ingresada":str(qty)}
+                rec=Record(module="repuestos",title=name,data=json.dumps(data,ensure_ascii=False),amount=0,status="Stock actualizado",created_by=current_user().id)
+                db.session.add(rec); db.session.flush()
+                log_action("entrada de inventario hidráulico","repuestos",rec.id,f"{name}: +{qty}; disponible {newstock}")
+                db.session.commit(); flash("Repuesto guardado. Stock disponible: "+str(newstock))
+            except (InvalidOperation,ValueError):
+                db.session.rollback(); flash("Ingresá una cantidad y stock mínimo válidos.")
+            return redirect(url_for("module_page",module="repuestos"))
+        allrows=Record.query.filter_by(module="repuestos").order_by(Record.created_at.desc()).all()
+        seen=set(); current_items=[]; history=[]
+        for rec in allrows:
+            d=json.loads(rec.data or "{}"); history.append((rec,d)); key=d.get("nombre","").strip().casefold()
+            if key and key not in seen:
+                seen.add(key); current_items.append((rec,d))
+        q=request.args.get("q","").strip().casefold()
+        current_items=[(r,d) for r,d in current_items if not q or q in (r.title+" "+r.data).casefold()]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>Inventario de puesto hidráulico</h2><form method="post" class="grid">
+        <div><label>Artículo / repuesto</label><input name="nombre" required></div><div><label>Código / referencia</label><input name="codigo"></div>
+        <div><label>Cantidad inicial o que se agrega</label><input name="stock" type="number" min="0" step="0.001" required></div>
+        <div><label>Stock mínimo</label><input name="stock_minimo" type="number" min="0" step="0.001" value="0"></div><div><label>Ubicación</label><input name="ubicacion"></div>
+        <div style="align-self:end"><button>Guardar / agregar stock</button></div></form></section>
+        <section class="card inventory-list"><h2>Artículos y stock disponible</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo o código"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir inventario</button></form>
+        <table><tr><th>Artículo</th><th>Código</th><th>Disponible</th><th>Stock mínimo</th><th>Ubicación</th></tr>{% for r,d in current_items %}<tr><td>{{d.get('nombre')}}</td><td>{{d.get('codigo')}}</td><td class="inventory-qty">{{d.get('stock')}}</td><td>{{d.get('stock_minimo')}}</td><td>{{d.get('ubicacion')}}</td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Historial de entradas</h2><table><tr><th>Fecha/hora</th><th>Artículo</th><th>Cantidad agregada</th><th>Stock tras registro</th><th>Imprimir</th></tr>{% for r,d in history %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cantidad_ingresada',d.get('stock'))}}</td><td>{{d.get('stock')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        """,title=title,current_items=current_items,history=history,q=q)
     if module == "gastos":
         if request.method == "POST":
             try:
