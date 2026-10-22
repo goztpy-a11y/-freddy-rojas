@@ -408,15 +408,42 @@ def mantenimiento():
 def gomeria_camiones():
     _can_area("gomeria")
     if request.method=="POST":
-        _save("gomeria_camiones",request.form.get("camion","")+" · "+request.form.get("servicio",""),{"camion":request.form.get("camion",""),"fecha":request.form.get("fecha",""),"servicio":request.form.get("servicio",""),"costo":request.form.get("costo","0"),"kilometraje":request.form.get("kilometraje",""),"responsable":request.form.get("responsable","")},request.form.get("costo","0"),"Registrado")
-        flash("Servicio de gomería registrado.")
+        try:
+            camion=request.form.get("camion","").strip()
+            fecha=request.form.get("fecha","").strip()
+            servicio=request.form.get("servicio","").strip()
+            detalle=request.form.get("detalle","").strip()
+            cantidad=Decimal(request.form.get("cantidad","0").replace(",",".") or "0")
+            raw_cost=request.form.get("costo","").strip().replace(",",".")
+            costo=Decimal(raw_cost) if raw_cost else Decimal("0")
+            if not camion or not fecha or not servicio or not detalle or cantidad<0 or costo<0:
+                raise InvalidOperation()
+            data={"camion":camion,"fecha":fecha,"servicio":servicio,"detalle":detalle,"cantidad":str(cantidad),
+                  "costo":str(costo),"responsable":request.form.get("responsable","").strip(),
+                  "observaciones":request.form.get("observaciones","").strip()}
+            _save("gomeria_camiones",camion+" · "+servicio,data,costo,"Pagado" if costo>0 else "Registrado")
+            if costo>0:
+                log_action("gomería con costo registrado","gomeria_camiones",None,f"{camion}; {servicio}; Gs. {costo}")
+            flash("Servicio de gomería registrado.")
+        except (InvalidOperation,ValueError):
+            flash("Revisá los datos del servicio y el costo; el costo puede quedar vacío si no se pagó.")
         return redirect(url_for("gomeria_camiones"))
     rows=[(r,_data(r)) for r in _rows("gomeria_camiones")]
     equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
     return _page("Gomería por camión", """
-    <section class="card"><h2>Registrar servicio de gomería</h2><form method="post" class="grid"><div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Trabajo realizado</label><input name="servicio" required></div><div><label>Costo (Gs.)</label><input name="costo" type="number" min="0" step="0.01" value="0"></div><div><label>Kilometraje</label><input name="kilometraje" type="number" min="0" step="1"></div><div><label>Responsable</label><input name="responsable"></div><div style="align-self:end"><button>Guardar servicio</button></div></form></section>
-    <section class="card"><h2>Historial de gomería</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Camión</th><th>Servicio</th><th>Costo</th><th>Kilometraje</th><th>Responsable</th></tr>{% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('costo')}}</td><td>{{d.get('kilometraje')}}</td><td>{{d.get('responsable')}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Registrar servicio de gomería</h2><form method="post" class="grid">
+    <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Tipo de servicio</label><select name="servicio" required><option>Reparación de cubierta</option><option>Cambio de cubierta</option><option>Reparación de cámara</option><option>Cambio de cámara</option><option>Otro</option></select></div>
+    <div><label>Descripción del trabajo</label><input name="detalle" required></div><div><label>Cantidad (si aplica)</label><input name="cantidad" type="number" min="0" step="0.001"></div>
+    <div><label>Costo pagado (Gs., opcional)</label><input name="costo" type="number" min="0" step="0.01"></div>
+    <div><label>Responsable</label><input name="responsable"></div><div><label>Observaciones</label><input name="observaciones"></div>
+    <div style="align-self:end"><button>Guardar servicio</button></div></form></section>
+    <section class="card"><h2>Historial de gomería por camión</h2><button type="button" onclick="window.print()">Imprimir</button>
+    <table><tr><th>Fecha</th><th>Camión</th><th>Servicio</th><th>Descripción</th><th>Cantidad</th><th>Costo</th><th>Responsable</th><th>Observaciones</th><th>Imprimir</th></tr>
+    {% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('cantidad')}}</td><td>{{d.get('costo')}}</td><td>{{d.get('responsable')}}</td><td>{{d.get('observaciones')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
     """,rows=rows,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
+
 
 @app.get("/auditoria-pagos")
 @login_required
