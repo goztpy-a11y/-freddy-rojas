@@ -623,7 +623,7 @@ def module_page(module):
         for rec in originals:
             d=json.loads(rec.data or "{}")
             paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
-                      if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rec.id)),Decimal("0"))
+                      if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rec.id)),Decimal("0"))
             summaries.append((rec,d,paid,max(Decimal("0"),rec.amount-paid)))
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
