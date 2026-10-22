@@ -25,7 +25,7 @@ AREAS = {
  "inventario": "Inventario", "auditoria": "Auditoría"
 }
 MODULES = {
- "clientes": ("Clientes y proveedores", "caja", [
+ "clientes": ("Proveedores", "caja", [
   ("nombre","Nombre / razón social","text",True),("documento","RUC / documento","text",False),
   ("telefono","Teléfono","text",False),("direccion","Dirección","text",False),
   ("datos_bancarios","Datos bancarios del cliente (no cuenta de la empresa)","text",False)]),
@@ -343,6 +343,8 @@ def module_page(module):
         return redirect(url_for("combustible_stock"))
     if module == "gomeria":
         return redirect(url_for("gomeria_camiones"))
+    if module == "clientes":
+        return redirect(url_for("listado_proveedores"))
     if module == "materiales":
         if request.method == "POST":
             name=request.form.get("nombre","").strip()
