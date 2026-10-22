@@ -283,7 +283,7 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now()}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now(), "allowed": allowed}
 
 @app.get("/health")
 def health():
@@ -324,7 +324,7 @@ def index():
     return render_template_string(BASE + """
     <section class="card dashboard-overview"><h2>Resumen ejecutivo</h2>
     {% if not config.get('DATABASE_URL') %}<p class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</p>{% endif %}
-    <div class="grid"><div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Ver autorizaciones&nbsp; →</a></p></div>
+    <div class="grid">{% if user.role=='admin' or allowed('tesoreria') %}<div class="card"><h3>Solicitudes pendientes</h3><strong>{{pending}}</strong><p><a href="{{url_for('approvals')}}">Ver autorizaciones&nbsp; →</a></p></div>{% endif %}
     {% if user.role=='admin' %}<div class="card"><h3>Cuentas empresariales activas</h3><strong>{{accounts|length}}</strong><p><a href="{{url_for('module_page',module='cuentas_empresa')}}">Consultar cuentas&nbsp; →</a></p></div>{% endif %}
     <div class="card"><h3>Movimientos recientes</h3><strong>{{records|length}}</strong><p><a href="#ultimos-movimientos">Ver actividad&nbsp; →</a></p></div></div></section>
     <section class="card" id="ultimos-movimientos"><h2>Actividad reciente</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>
