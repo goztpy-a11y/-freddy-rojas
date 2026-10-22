@@ -258,6 +258,7 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 
 @media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
+@media print{.sidebar,header,button,.btn,form,nav,.flash{display:none!important}body{background:#fff!important;color:#000!important;font-size:11pt}main,body:not(:has(.sidebar)) main{margin:0!important;padding:0!important;max-width:none!important}.card{box-shadow:none!important;border:0!important;padding:8px!important;break-inside:avoid}table{width:100%;font-size:9pt}th,td{padding:5px;border:1px solid #bbb!important}th{background:#eee!important;color:#000!important}a{color:#000!important;text-decoration:none!important}.inventory-qty{font-size:24pt;font-weight:800}}.inventory-list table{font-size:17px}.inventory-list th,.inventory-list td{padding:16px 18px}.inventory-qty{font-size:25px;font-weight:800;color:#183c68}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
@@ -678,11 +679,77 @@ def change_password():
     </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>
     """, title="Mi contraseña")
 
+@app.get("/informes")
+@login_required
+def reports():
+    available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key)]
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para consultar e imprimir sus operaciones registradas.</p>
+    <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
+    <p><a class="btn" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informes",available=available)
+
+@app.get("/informes/<module>")
+@login_required
+def report_module(module):
+    if module not in MODULES: abort(404)
+    if not allowed(module): abort(403)
+    q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+    items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all(); results=[]
+    for r in items:
+        d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
+        if q and q not in hay: continue
+        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
+        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if amount_filter and amount_filter not in str(r.amount): continue
+        results.append((r,d))
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Informe: {{label}}</h2><form method="get" class="grid">
+    <div><label>Buscar cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
+    <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('report_module',module=module)}}">Limpiar</a></div></form>
+    <p><button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
+    <table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>
+    {% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe "+label if False else "Informe",label=MODULES[module][0],module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results)
+
+@app.get("/historial")
+@login_required
+def general_history():
+    available=[key for key in MODULES if allowed(key)]
+    q=request.args.get("q","").strip().casefold(); sector=request.args.get("sector",""); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+    items=Record.query.order_by(Record.created_at.desc()).all(); results=[]
+    for r in items:
+        if r.module not in available: continue
+        d=json.loads(r.data or "{}"); hay=(r.title+" "+r.module+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
+        if sector and r.module!=sector: continue
+        if q and q not in hay: continue
+        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
+        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if amount_filter and amount_filter not in str(r.amount): continue
+        results.append((r,d))
+    sectors=[(k,MODULES[k][0]) for k in available]
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Historial general</h2><form method="get" class="grid"><div><label>Buscar por cualquier información</label><input name="q" value="{{q}}"></div>
+    <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for k,v in sectors %}<option value="{{k}}" {% if sector==k %}selected{% endif %}>{{v}}</option>{% endfor %}</select></div>
+    <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
+    <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('general_history')}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
+
+@app.get("/imprimir/<int:rid>")
+@login_required
+def print_record(rid):
+    rec=db.get_or_404(Record,rid)
+    if not allowed(rec.module): abort(403)
+    data=json.loads(rec.data or "{}")
+    return render_template_string(BASE+"""
+    <section class="card"><h2>{{MODULES.get(rec.module,(rec.module,))[0]}}</h2><h3>{{rec.title}}</h3>
+    <p><b>Fecha:</b> {{rec.created_at.strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
+    <table><tr><th>Dato</th><th>Información</th></tr>{% for k,v in data.items() %}{% if v is mapping %}<tr><td>{{k}}</td><td>{% for a,b in v.items() %}{{a}}: {{b}}<br>{% endfor %}</td></tr>{% elif v is sequence and v is not string %}<tr><td>{{k}}</td><td>{% for line in v %}{% if line is mapping %}{% for a,b in line.items() %}<b>{{a}}:</b> {{b}} &nbsp; {% endfor %}<br>{% else %}{{line}}<br>{% endif %}{% endfor %}</td></tr>{% else %}<tr><td>{{k}}</td><td>{{v}}</td></tr>{% endif %}{% endfor %}<tr><th>Monto total</th><th>{{rec.amount}}</th></tr></table>
+    <p><button class="btn" onclick="window.print()">Imprimir</button> <a class="btn" href="{{url_for('module_page',module=rec.module)}}">Volver al sector</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Imprimir",rec=rec,data=data)
+
 @app.get("/admin/respaldo.json")
 @admin_required
 def backup_export():
     payload = {
-        "app": "Freddy Rojas",
+        "app": "El Toro S.A.",
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "warning": "Respaldo manual JSON; almacenar en un lugar privado y seguro.",
         "users": [{"id":u.id,"username":u.username,"role":u.role,"areas":u.areas,"active":u.active,"created_at":u.created_at.isoformat()} for u in User.query.order_by(User.id).all()],
@@ -695,7 +762,7 @@ def backup_export():
     log_action("exportar respaldo manual","backup",None,f"Exportó {len(payload['records'])} registros")
     db.session.commit()
     return send_file(BytesIO(content), mimetype="application/json", as_attachment=True,
-                     download_name="freddy_rojas_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json")
+                     download_name="el_toro_sa_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json")
 
 @app.errorhandler(403)
 def forbidden(e):
