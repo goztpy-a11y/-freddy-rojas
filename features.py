@@ -196,26 +196,40 @@ def movimiento_proveedor(nombre):
 def planillas():
     _can_caja()
     if request.method=="POST":
-        d={k:request.form.get(k,"").strip() for k in ["cliente","fecha","kg","monto_deuda","diferencia","pago","medio","flete","salida","detalle"]}
+        d={k:request.form.get(k,"").strip() for k in ["cliente","fecha","material_id","kg","monto_deuda","diferencia","pago","medio","flete","salida","detalle"]}
         try:
             kg=Decimal(d["kg"] or "0"); debt=Decimal(d["monto_deuda"] or "0"); diff=Decimal(d["diferencia"] or "0"); pay=Decimal(d["pago"] or "0"); freight=Decimal(d["flete"] or "0")
             if not d["cliente"] or min(kg,debt,diff,pay,freight)<0: raise InvalidOperation()
-            d.update({"kg":str(kg),"monto_deuda":str(debt),"diferencia":str(diff),"pago":str(pay),"flete":str(freight)})
-            _save("planillas",d["cliente"]+" · planilla",d,pay,"Pago parcial" if pay else "Registrado")
-            flash("Movimiento de planilla guardado.")
+            material=db.session.get(__import__("app").Material,int(d["material_id"])) if d["material_id"] else None
+            price=Decimal("0")
+            if material:
+                vendor=next((_data(v) for v in _rows("proveedores") if _data(v).get("nombre","").casefold()==d["cliente"].casefold()),{})
+                assigned=vendor.get("precios_materiales",{}).get(str(material.id))
+                price=Decimal(str(assigned)) if assigned not in (None,"") else (material.wholesale_price if material.wholesale_price is not None else material.price)
+            goods=(kg*price).quantize(Decimal("0.01"))
+            previous=[_data(r) for r in _rows("planillas") if _data(r).get("cliente","").casefold()==d["cliente"].casefold()]
+            previous_balance=Decimal(str(previous[0].get("saldo_final",previous[0].get("monto_deuda",0)))) if previous else debt
+            balance=previous_balance+goods+diff+freight-pay
+            if balance<0: raise InvalidOperation()
+            d.update({"kg":str(kg),"monto_deuda":str(previous_balance),"precio_unitario":str(price),"monto_mercaderia":str(goods),"diferencia":str(diff),"pago":str(pay),"flete":str(freight),"saldo_final":str(balance)})
+            _save("planillas",d["cliente"]+" · planilla",d,pay,"Pagado" if balance==0 else ("Pago parcial" if pay else "Registrado"))
+            flash("Planilla guardada. Mercadería: Gs. "+str(goods)+". Saldo actualizado: Gs. "+str(balance))
         except (InvalidOperation,ValueError):
-            flash("Revisá los datos numéricos de la planilla.")
+            flash("Revisá el cliente, material y valores numéricos; el pago no puede superar el saldo.")
         return redirect(url_for("planillas"))
     rows=_rows("planillas")
+    from app import Material
+    materials=Material.query.order_by(Material.name).all()
+    vendors=[_data(r).get("nombre") for r in _rows("proveedores")]
     return _page("Planillas", """
     <section class="card"><h2>Diferencias, pagos, fletes y salidas</h2><form method="post" class="grid">
-    <div><label>Cliente / proveedor</label><input name="cliente" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-    <div><label>Kilogramos recibidos</label><input name="kg" type="number" min="0" step="0.001" value="0"></div><div><label>Deuda / diferencia anterior (Gs.)</label><input name="monto_deuda" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Cliente / proveedor</label><input name="cliente" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v}}">{% endfor %}</datalist></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Material</label><select name="material_id"><option value="">Sin material / ajuste manual</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Kilogramos recibidos</label><input name="kg" type="number" min="0" step="0.001" value="0"></div><div><label>Deuda inicial si no hay historial (Gs.)</label><input name="monto_deuda" type="number" min="0" step="0.01" value="0"></div>
     <div><label>Diferencia de este movimiento (Gs.)</label><input name="diferencia" type="number" min="0" step="0.01" value="0"></div><div><label>Pago parcial (Gs.)</label><input name="pago" type="number" min="0" step="0.01" value="0"></div>
     <div><label>Medio de pago</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label>Flete (Gs.)</label><input name="flete" type="number" min="0" step="0.01" value="0"></div>
     <div><label>Salida / retiro</label><input name="salida" placeholder="Detalle de salida"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Guardar planilla</button></div></form></section>
-    <section class="card"><h2>Historial de planillas</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Cliente</th><th>Kg</th><th>Deuda anterior</th><th>Diferencia</th><th>Pago</th><th>Flete</th><th>Salida</th><th>Detalle</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('cliente')}}</td><td>{{d.get('kg')}}</td><td>{{d.get('monto_deuda')}}</td><td>{{d.get('diferencia')}}</td><td>{{d.get('pago')}}</td><td>{{d.get('flete')}}</td><td>{{d.get('salida')}}</td><td>{{d.get('detalle')}}</td></tr>{% endfor %}</table></section>
-    """,rows=rows,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    <section class="card"><h2>Historial de planillas</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Cliente</th><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Mercadería</th><th>Saldo anterior</th><th>Diferencia</th><th>Pago</th><th>Flete</th><th>Saldo actualizado</th><th>Salida</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('cliente')}}</td><td>{% for m in materials %}{% if m.id|string==d.get('material_id') %}{{m.name}}{% endif %}{% endfor %}</td><td>{{d.get('kg')}}</td><td>{{d.get('precio_unitario')}}</td><td>{{d.get('monto_mercaderia')}}</td><td>{{d.get('monto_deuda')}}</td><td>{{d.get('diferencia')}}</td><td>{{d.get('pago')}}</td><td>{{d.get('flete')}}</td><td><b>{{d.get('saldo_final')}}</b></td><td>{{d.get('salida')}}</td></tr>{% endfor %}</table></section>
+    """,rows=rows,materials=materials,vendors=vendors,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/flota",methods=["GET","POST"])
 @login_required
