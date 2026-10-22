@@ -242,16 +242,22 @@ def flota():
     equip=[(r,_data(r)) for r in _rows("flota_equipo")]
     moves=[(r,_data(r)) for r in _rows("flota")]
     fuel=[(r,_data(r)) for r in _rows("combustible_camion")]
+    truck_summaries=[]
+    for er,ed in equip:
+        if ed.get("tipo")=="Camión":
+            truck_moves=[md for mr,md in moves if md.get("camion")==ed.get("nombre")]
+            truck_fuel=[fd for fr,fd in fuel if fd.get("camion")==ed.get("nombre")]
+            truck_summaries.append({"nombre":ed.get("nombre"),"kg":sum((Decimal(str(md.get("kg",0))) for md in truck_moves),Decimal("0")),"litros":sum((Decimal(str(fd.get("litros",0))) for fd in truck_fuel),Decimal("0")),"count":len(truck_moves)})
     return _page("Flota", """
     {% if user.role=='admin' %}<section class="card"><h2>Agregar camión o maquinaria</h2><form method="post" class="grid"><input type="hidden" name="accion" value="equipo">
     <div><label>Nombre / chapa / código</label><input name="camion" required></div><div><label>Tipo</label><select name="tipo"><option>Camión</option><option>Maquinaria</option></select></div>
-    <div><label>Intervalo mantenimiento (km u horas)</label><input name="intervalo" type="number" min="1" value="15000" required></div><div><label>Uso estimado diario (km u horas)</label><input name="diario" type="number" min="0" step="0.1" value="0" required></div><div style="align-self:end"><button>Guardar equipo</button></div></form></section>{% endif %}
+    <div><label>Intervalo mantenimiento (km u horas)</label><input id="intervalo-equipo" name="intervalo" type="number" min="1" value="15000" required></div><div><label>Uso estimado diario (km u horas)</label><input id="diario-equipo" name="diario" type="number" min="0" step="0.1" value="0" required></div><div style="align-self:end"><button>Guardar equipo</button></div></form><script>const tipoEquipo=document.querySelector('select[name="tipo"]');tipoEquipo.addEventListener('change',()=>{document.getElementById('intervalo-equipo').value=tipoEquipo.value==='Camión'?15000:325;document.getElementById('diario-equipo').value=tipoEquipo.value==='Camión'?0:(tipoEquipo.value==='Maquinaria'?16:0);});</script></section>{% endif %}
     <section class="card"><h2>Registrar retiro de mercadería</h2><form method="post" class="grid"><input type="hidden" name="accion" value="movimiento">
     <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r,d in equip %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
     <div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Kilogramos traídos</label><input type="number" name="kg" min="0" step="0.001" required></div><div><label>Material / carga</label><input name="material"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Registrar retiro</button></div></form></section>
     <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg registrados</th><th>Combustible cargado (L)</th><th>Registros</th></tr>
-    {% for r,d in equip if d.get('tipo')=='Camión' %}{% set kg=moves|selectattr('1.camion','equalto',d.get('nombre'))|map(attribute='1.kg')|list %}<tr><td>{{d.get('nombre')}}</td><td>{{kg|sum if kg else 0}}</td><td>{{fuel|selectattr('1.camion','equalto',d.get('nombre'))|map(attribute='1.litros')|list|sum}}</td><td>{{moves|selectattr('1.camion','equalto',d.get('nombre'))|list|length}}</td></tr>{% endfor %}</table></section>
-    """,equip=equip,moves=moves,fuel=fuel,today=datetime.now().strftime("%Y-%m-%d"))
+    {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg}}</td><td>{{s.litros}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
+    """,equip=equip,moves=moves,fuel=fuel,truck_summaries=truck_summaries,today=datetime.now().strftime("%Y-%m-%d"))
 
 @app.route("/combustible-stock",methods=["GET","POST"])
 @login_required
@@ -320,8 +326,15 @@ def mantenimiento():
         name=e.get("nombre"); istruck=e.get("tipo")=="Camión"; unit="km" if istruck else "horas"
         latest_read=next((_data(r) for r in readings if _data(r).get("equipo")==name),None)
         latest_maint=next((_data(r) for r in maint if _data(r).get("equipo")==name),None)
-        current=Decimal(str(latest_read.get("lectura",0) if latest_read else 0)); base=Decimal(str(latest_maint.get("lectura",current) if latest_maint else current))
-        interval=Decimal(str(e.get("intervalo",15000))); daily=Decimal(str(e.get("diario",0)))
+        current=Decimal(str(latest_read.get("lectura",0) if latest_read else 0))
+        daily=Decimal(str(e.get("diario",0)))
+        if latest_read and latest_read.get("fecha") and daily>0:
+            try:
+                last_day=datetime.strptime(latest_read.get("fecha"),"%Y-%m-%d").date()
+                current += daily*Decimal(str(max(0,(datetime.now().date()-last_day).days)))
+            except ValueError: pass
+        base=Decimal(str(latest_maint.get("lectura",current) if latest_maint else current))
+        interval=Decimal(str(e.get("intervalo",15000)))
         used=max(Decimal("0"),current-base); remaining=max(Decimal("0"),interval-used)
         summaries.append({"nombre":name,"tipo":e.get("tipo"),"unidad":unit,"intervalo":interval,"diario":daily,"actual":current,"ultimo":latest_maint.get("fecha","Sin mantenimiento") if latest_maint else "Sin mantenimiento","usado":used,"restante":remaining,"dias":(remaining/daily).quantize(Decimal("0.1")) if daily>0 else None})
     return _page("Mantenimiento", """
