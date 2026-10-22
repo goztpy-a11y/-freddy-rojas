@@ -340,8 +340,9 @@ def combustible_stock():
         except (InvalidOperation,ValueError):
             flash("Ingresá litros válidos mayores que cero.")
         return redirect(url_for("combustible_stock"))
-    entries=_rows("combustible_stock"); charges=_rows("combustible_camion")
-    stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))
+    entries=_rows("combustible_stock"); charges=_rows("combustible_camion"); legacy=_rows("combustible")
+    stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges+legacy),Decimal("0"))
+    charges=charges+legacy
     return _page("Stock combustible", """
     {% if user.role=='admin' %}<section class="card"><h2>Cargar stock de combustible</h2><form method="post" class="grid"><div><label>Litros ingresados</label><input name="litros" type="number" min="0.01" step="0.01" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Detalle / comprobante</label><input name="detalle"></div><div style="align-self:end"><button>Agregar al stock</button></div></form></section>{% endif %}
     <section class="card"><h2>Stock disponible: {{stock}} litros</h2><form method="post" action="{{url_for('cargar_combustible')}}" class="grid">
@@ -355,7 +356,7 @@ def combustible_stock():
 def cargar_combustible():
     _can_area("estacion")
     try:
-        litros=Decimal(request.form.get("litros","").replace(",",".")); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")
+        litros=Decimal(request.form.get("litros","").replace(",",".")); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")+_rows("combustible")
         stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))
         if litros<=0 or litros>stock: raise InvalidOperation()
         camion=request.form.get("camion","").strip()
@@ -436,7 +437,8 @@ def gomeria_camiones():
         except (InvalidOperation,ValueError):
             flash("Revisá los datos del servicio y el costo; el costo puede quedar vacío si no se pagó.")
         return redirect(url_for("gomeria_camiones"))
-    rows=[(r,_data(r)) for r in _rows("gomeria_camiones")]
+    rows=[(r,_data(r)) for r in (_rows("gomeria_camiones")+_rows("gomeria"))]
+    rows.sort(key=lambda item:item[0].created_at,reverse=True)
     equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
     return _page("Gomería por camión", """
     <section class="card"><h2>Registrar servicio de gomería</h2><form method="post" class="grid">
