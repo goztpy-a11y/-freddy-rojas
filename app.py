@@ -2,7 +2,8 @@ import os, json
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from functools import wraps
-from flask import Flask, request, redirect, url_for, session, render_template_string, flash, abort
+from io import BytesIO
+from flask import Flask, request, redirect, url_for, session, render_template_string, flash, abort, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -187,7 +188,7 @@ table{width:100%;border-collapse:collapse;background:white}th,td{text-align:left
 </style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Gestión independiente del negocio</div></div>
 <div>{% if user %}{{ user.username }} · {{ AREAS.get(user.role,user.role) }} · <a href="{{ url_for('logout') }}">Salir</a>{% endif %}</div></header>
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
-{% if user %}<nav><a href="{{url_for('index')}}">Inicio</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a></nav>{% endif %}
+{% if user %}<nav><a href="{{url_for('index')}}">Inicio</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav>{% endif %}
 """
 
 @app.context_processor
@@ -427,6 +428,55 @@ def users():
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="password" minlength="10" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
     <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{{u.areas}}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+
+
+@app.route("/mi-cuenta/contrasena", methods=["GET","POST"])
+@login_required
+def change_password():
+    u = current_user()
+    if request.method == "POST":
+        current = request.form.get("current_password","")
+        new = request.form.get("new_password","")
+        confirm = request.form.get("confirm_password","")
+        if not check_password_hash(u.password_hash, current):
+            flash("La contraseña actual no coincide.")
+        elif len(new) < 12:
+            flash("La nueva contraseña debe tener al menos 12 caracteres.")
+        elif new != confirm:
+            flash("La confirmación no coincide.")
+        else:
+            u.password_hash = generate_password_hash(new)
+            log_action("cambiar contraseña","usuarios",u.id,"El usuario cambió su contraseña.")
+            db.session.commit()
+            flash("Contraseña cambiada correctamente.")
+            return redirect(url_for("index"))
+    return render_template_string(BASE + """
+    <section class="card" style="max-width:520px"><h2>Mi contraseña</h2>
+    <form method="post"><label>Contraseña actual</label><input type="password" name="current_password" autocomplete="current-password" required>
+    <label>Nueva contraseña (mínimo 12 caracteres)</label><input type="password" name="new_password" minlength="12" autocomplete="new-password" required>
+    <label>Confirmar nueva contraseña</label><input type="password" name="confirm_password" minlength="12" autocomplete="new-password" required>
+    <p><button class="btn">Cambiar contraseña</button></p></form></section>
+    </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>
+    """, title="Mi contraseña")
+
+@app.get("/admin/respaldo.json")
+@admin_required
+def backup_export():
+    payload = {
+        "app": "Freddy Rojas",
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "warning": "Respaldo manual JSON; almacenar en un lugar privado y seguro.",
+        "users": [{"id":u.id,"username":u.username,"role":u.role,"areas":u.areas,"active":u.active,"created_at":u.created_at.isoformat()} for u in User.query.order_by(User.id).all()],
+        "materials": [{"id":m.id,"name":m.name,"price":str(m.price),"unit":m.unit,"stock":str(m.stock),"updated_at":m.updated_at.isoformat() if m.updated_at else None} for m in Material.query.order_by(Material.id).all()],
+        "company_accounts": [{"id":a.id,"name":a.name,"bank":a.bank,"number":a.number,"currency":a.currency,"opening_balance":str(a.opening_balance),"balance":str(a.balance),"active":a.active,"created_at":a.created_at.isoformat()} for a in CompanyAccount.query.order_by(CompanyAccount.id).all()],
+        "records": [{"id":r.id,"module":r.module,"title":r.title,"data":json.loads(r.data or "{}"),"amount":str(r.amount),"status":r.status,"company_account_id":r.company_account_id,"created_by":r.created_by,"approved_by":r.approved_by,"paid_by":r.paid_by,"created_at":r.created_at.isoformat(),"updated_at":r.updated_at.isoformat()} for r in Record.query.order_by(Record.id).all()],
+        "audit_log": [{"id":a.id,"user_id":a.user_id,"action":a.action,"module":a.module,"record_id":a.record_id,"detail":a.detail,"created_at":a.created_at.isoformat()} for a in AuditLog.query.order_by(AuditLog.id).all()]
+    }
+    content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    log_action("exportar respaldo manual","backup",None,f"Exportó {len(payload['records'])} registros")
+    db.session.commit()
+    return send_file(BytesIO(content), mimetype="application/json", as_attachment=True,
+                     download_name="freddy_rojas_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json")
 
 @app.errorhandler(403)
 def forbidden(e):
