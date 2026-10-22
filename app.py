@@ -140,10 +140,17 @@ with app.app_context():
             with db.engine.begin() as conn:
                 conn.exec_driver_sql("ALTER TABLE material ADD COLUMN wholesale_price NUMERIC(16, 2)")
     initial_password = os.environ.get("ADMIN_PASSWORD")
-    if initial_password and not User.query.filter_by(username=os.environ.get("ADMIN_USERNAME", "admin")).first():
-        db.session.add(User(username=os.environ.get("ADMIN_USERNAME", "admin"),
+    admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+    if initial_password and not User.query.filter_by(username=admin_username).first():
+        db.session.add(User(username=admin_username,
             password_hash=generate_password_hash(initial_password), role="admin", areas=",".join(AREAS.keys())))
         db.session.commit()
+    # Cuentas iniciales por área. No se sobrescriben cuentas existentes.
+    for username, area in [("caja","caja"),("tesoreria","tesoreria"),("estacion","estacion"),("gomeria","gomeria"),("inventario","inventario"),("auditoria","auditoria")]:
+        if not User.query.filter_by(username=username).first():
+            db.session.add(User(username=username, password_hash=generate_password_hash("12345678910"),
+                role=area, areas=area, active=True))
+    db.session.commit()
 
 def current_user():
     uid = session.get("uid")
