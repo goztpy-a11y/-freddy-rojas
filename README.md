@@ -1,6 +1,6 @@
-# Freddy Rojas
+# El Toro S.A.
 
-Sistema independiente para la gestión del negocio de Freddy Rojas. Este repositorio no pertenece a El Toro Reciclados, Sistema de Recepción, Sistema de Inventario ni Localcito.
+Sistema independiente de gestión empresarial de El Toro S.A. Este repositorio no pertenece a El Toro Reciclados, Sistema de Recepción, Sistema de Inventario ni Localcito.
 
 ## Módulos incluidos en la primera versión de trabajo
 - Administración de usuarios, roles y áreas; acceso validado en el servidor.
