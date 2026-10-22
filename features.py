@@ -177,7 +177,7 @@ def proveedores():
     <div style="align-self:end"><button>Guardar proveedor</button></div></form>{% else %}<p>Solo Administración puede registrar o modificar proveedores y precios.</p>{% endif %}</section>
     <section class="card"><h2>Proveedores y códigos</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Código</th><th>Proveedor</th><th>Cédula</th><th>Teléfono</th><th>Última actividad</th><th>Precios asignados</th><th>Movimiento mensual</th></tr>
     {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono')}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}</td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td></tr>{% endfor %}</table></section>
-    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos") for r,d in items})
+    """,items=items,mats=mats,last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items})
 
 @app.get("/proveedores/movimiento/<path:nombre>")
 @login_required
