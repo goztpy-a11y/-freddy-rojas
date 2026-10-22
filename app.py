@@ -29,9 +29,7 @@ MODULES = {
   ("nombre","Nombre / razón social","text",True),("documento","RUC / documento","text",False),
   ("telefono","Teléfono","text",False),("direccion","Dirección","text",False),
   ("datos_bancarios","Datos bancarios del cliente (no cuenta de la empresa)","text",False)]),
- "materiales": ("Materiales y precios", "admin", [
-  ("nombre","Material","text",True),("precio_minorista","Precio minorista (opcional)","number",False),
-  ("precio_mayorista","Precio mayorista (opcional)","number",False)]),
+ "materiales": ("Materiales", "admin", [("nombre","Nombre del material","text",True)]),
  "inventario": ("Inventario de materiales", "inventario", [
   ("nombre","Nombre del material","text",True),("cantidad","Cantidad disponible","number",True)]),
  "tickets": ("Tickets de entrada", "caja", [
@@ -449,27 +447,20 @@ def module_page(module):
     if module == "materiales":
         if request.method == "POST":
             name=request.form.get("nombre","").strip()
-            minor=request.form.get("precio_minorista","").strip().replace(",",".")
-            major=request.form.get("precio_mayorista","").strip().replace(",",".")
-            if not name: flash("Ingresá el nombre del material.")
-            elif Material.query.filter(db.func.lower(Material.name)==name.lower()).first(): flash("Ese material ya existe. Actualizá sus precios desde el listado.")
+            if not name:
+                flash("Ingresá el nombre del material.")
+            elif Material.query.filter(db.func.lower(Material.name)==name.lower()).first():
+                flash("Ese material ya existe.")
             else:
-                try:
-                    pminor=Decimal(minor) if minor else Decimal("0")
-                    pmajor=Decimal(major) if major else None
-                    if pminor<0 or (pmajor is not None and pmajor<0): raise InvalidOperation()
-                    m=Material(name=name,price=pminor,wholesale_price=pmajor,unit="kg",stock=0)
-                    db.session.add(m); db.session.flush()
-                    log_action("crear material y precios","materiales",m.id,f"{name}; minorista={minor or 'no definido'}; mayorista={major or 'no definido'}")
-                    db.session.commit(); flash("Material guardado.")
-                except (InvalidOperation,ValueError): db.session.rollback(); flash("Los precios deben ser números válidos.")
+                m=Material(name=name,price=0,wholesale_price=None,unit="kg",stock=0)
+                db.session.add(m); db.session.flush()
+                log_action("crear material","materiales",m.id,name)
+                db.session.commit(); flash("Material guardado.")
             return redirect(url_for("module_page",module=module))
         items=Material.query.order_by(Material.name).all()
         return render_template_string(BASE+"""
-        <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
+        <section class="card"><h2>Agregar material</h2><form method="post" class="grid">
         <div><label>Nombre del material</label><input name="nombre" required></div>
-        <div><label>Precio minorista (opcional)</label><input name="precio_minorista" type="number" min="0" step="0.01"></div>
-        <div><label>Precio mayorista (opcional)</label><input name="precio_mayorista" type="number" min="0" step="0.01"></div>
         <div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
         <section class="card"><h2>Listado de materiales</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
         <table><tr><th>Material</th><th>Precio minorista</th><th>Precio mayorista</th><th>Actualizar precios</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price if m.price and m.price != 0 else '—'}}</td><td>{{m.wholesale_price if m.wholesale_price is not none else '—'}}</td>
