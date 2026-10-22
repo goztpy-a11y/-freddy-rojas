@@ -307,7 +307,7 @@ def flota():
         return redirect(url_for("flota"))
     equip=[(r,_data(r)) for r in _rows("flota_equipo")]
     moves=[(r,_data(r)) for r in _rows("flota")]
-    fuel=[(r,_data(r)) for r in _rows("combustible_camion")]
+    fuel=[(r,_data(r)) for r in (_rows("combustible_camion")+_rows("combustible"))]
     truck_summaries=[]
     for er,ed in equip:
         if ed.get("tipo")=="Camión":
