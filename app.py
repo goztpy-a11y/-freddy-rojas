@@ -360,6 +360,76 @@ def index():
     <section class="card" id="ultimos-movimientos"><h2>Actividad reciente</h2>{% if records %}<table><tr><th>Fecha/hora</th><th>Módulo</th><th>Registro</th><th>Estado</th><th>Importe</th></tr>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Todavía no hay registros.</p>{% endif %}</section>
     </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""", title="Inicio", pending=pending, accounts=accounts, records=records)
 
+@app.get("/area/<section>")
+@login_required
+def admin_section(section):
+    if current_user().role != "admin":
+        abort(403)
+    groups = {
+      "caja": ("Caja", "OPERACIONES FINANCIERAS", "Pagos, proveedores y movimientos diarios.", [
+        ("Pagos diarios", url_for("pagos_diarios"), "Pagos y comprobantes"),
+        ("Préstamos", url_for("prestamos"), "Registro y seguimiento"),
+        ("Proveedores y precios", url_for("proveedores"), "Registrar proveedor y precios por material"),
+        ("Listado de proveedores", url_for("listado_proveedores"), "Consultar proveedores registrados"),
+        ("Cuenta de proveedores", url_for("planillas"), "Planillas y movimientos"),
+        ("Fletes", url_for("fletes"), "Control de fletes"),
+        ("Tickets de entrada", url_for("module_page",module="tickets"), "Registrar y consultar tickets"),
+        ("Solicitudes de pago", url_for("module_page",module="solicitudes"), "Solicitudes para autorización"),
+        ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa")]),
+      "estacion": ("Estación de servicio", "FLOTA Y COMBUSTIBLE", "Camiones, combustible, retiros y mantenimiento.", [
+        ("Camiones y retiros", url_for("flota"), "Vehículos y retiros"),
+        ("Stock de combustible", url_for("combustible_stock"), "Existencias y cargas"),
+        ("Combustible por camión", url_for("module_page",module="combustible"), "Historial por vehículo"),
+        ("Mantenimiento", url_for("mantenimiento"), "Servicios de flota")]),
+      "gomeria": ("Gomería", "MANTENIMIENTO DE NEUMÁTICOS", "Todas las funciones de gomería en una sola sección.", [
+        ("Gomería por camión", url_for("gomeria_camiones"), "Trabajos por vehículo"),
+        ("Servicios de gomería", url_for("module_page",module="gomeria"), "Registrar servicio, costo y responsable"),
+        ("Historial de gomería", url_for("report_module",module="gomeria"), "Consultar registros del área")]),
+      "inventario": ("Inventario", "STOCK Y MATERIALES", "Materiales, repuestos, ventas y movimientos.", [
+        ("Materiales y precios", url_for("module_page",module="materiales"), "Catálogo de materiales"),
+        ("Inventario de materiales", url_for("module_page",module="inventario"), "Entradas y existencias"),
+        ("Ventas", url_for("module_page",module="ventas"), "Ventas y salidas"),
+        ("Repuestos hidráulicos", url_for("module_page",module="repuestos"), "Stock de repuestos"),
+        ("Movimientos de stock", url_for("module_page",module="movimientos_stock"), "Entradas, usos y salidas")]),
+      "tesoreria": ("Tesorería", "CUENTAS Y PAGOS", "Cuentas por pagar y cobrar, cheques y autorizaciones.", [
+        ("Cuentas por pagar", url_for("module_page",module="cuentas_pagar"), "Obligaciones y vencimientos"),
+        ("Cuentas por cobrar", url_for("module_page",module="cuentas_cobrar"), "Cobros y seguimiento"),
+        ("Cheques adelantados", url_for("module_page",module="cheques"), "Cheques y vencimientos"),
+        ("Movimientos de pagos", url_for("module_page",module="pagos_cuentas"), "Movimientos de cuentas"),
+        ("Cobros de cuentas", url_for("module_page",module="cobros_cuentas"), "Registrar cobros"),
+        ("Autorizaciones y pagos", url_for("approvals"), "Revisar solicitudes"),
+        ("Cuentas bancarias de la empresa", url_for("module_page",module="cuentas_empresa"), "Cuentas y saldos")]),
+      "auditoria": ("Auditoría", "CONTROL Y TRAZABILIDAD", "Revisión de operaciones y actividad de usuarios.", [
+        ("Auditoría de pagos", url_for("auditoria_pagos"), "Revisar pagos y comprobantes"),
+        ("Revisión y auditoría", url_for("module_page",module="auditoria"), "Registrar controles y diferencias"),
+        ("Informe de accesos", url_for("access_report"), "Quién ingresó y cuándo"),
+        ("Informes", url_for("reports"), "Informes del sistema"),
+        ("Historial", url_for("general_history"), "Historial general")]),
+      "administracion": ("Administración", "CONFIGURACIÓN DEL SISTEMA", "Usuarios, permisos y herramientas administrativas.", [
+        ("Usuarios y permisos", url_for("users"), "Crear usuarios y asignar áreas"),
+        ("Materiales y precios", url_for("module_page",module="materiales"), "Administrar catálogo"),
+        ("Cuentas de la empresa", url_for("module_page",module="cuentas_empresa"), "Cuentas bancarias y saldos"),
+        ("Informe de accesos", url_for("access_report"), "Registro de ingresos"),
+        ("Exportar respaldo", url_for("backup_export"), "Descargar respaldo de datos"),
+        ("Mi contraseña", url_for("change_password"), "Cambiar contraseña del administrador")])
+    }
+    data=groups.get(section)
+    if not data:
+        abort(404)
+    return render_template_string(BASE + """
+    <section class="card area-hero">
+      <div class="area-eyebrow">{{data[1]}}</div><h1>{{data[0]}}</h1>
+      <p>{{data[2]}}</p><a class="btn btn-secondary" href="{{url_for('index')}}">← Volver al panel</a>
+    </section>
+    <section class="area-grid">
+      {% for label,href,description in data[3] %}
+      <a class="area-link" href="{{href}}"><span class="area-link-icon">{{loop.index}}</span>
+      <span class="area-link-copy"><strong>{{label}}</strong><small>{{description}}</small></span><span class="area-arrow">→</span></a>
+      {% endfor %}
+    </section></main><footer>El Toro S.A. · Plataforma de gestión empresarial</footer></body></html>
+    """, title=data[0], data=data)
+
+
 @app.route("/modulo/<module>", methods=["GET","POST"])
 @login_required
 def module_page(module):
