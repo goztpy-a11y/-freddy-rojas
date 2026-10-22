@@ -451,6 +451,137 @@ def module_page(module):
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
         <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{x.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
+    if module == "gastos":
+        if request.method == "POST":
+            try:
+                names=request.form.getlist("item[]"); quantities=request.form.getlist("cantidad_item[]"); prices=request.form.getlist("precio_item[]")
+                items=[]; total=Decimal("0")
+                for name,raw_qty,raw_price in zip(names,quantities,prices):
+                    name=name.strip(); raw_qty=raw_qty.strip().replace(",","."); raw_price=raw_price.strip().replace(",",".")
+                    if not name and not raw_qty and not raw_price: continue
+                    qty=Decimal(raw_qty); price=Decimal(raw_price)
+                    if not name or qty<=0 or price<0: raise InvalidOperation()
+                    subtotal=(qty*price).quantize(Decimal("0.01"))
+                    items.append({"articulo":name,"cantidad":str(qty),"precio_unitario":str(price),"subtotal":str(subtotal)})
+                    total+=subtotal
+                if not items or total<=0: raise InvalidOperation()
+                data={"fecha":request.form.get("fecha",""),"categoria":request.form.get("categoria","").strip(),
+                      "items":items,"detalle":"; ".join(x["articulo"] for x in items),
+                      "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip()}
+                if not data["fecha"] or not data["categoria"]: raise InvalidOperation()
+                rec=Record(module="gastos",title=data["categoria"]+" · "+data["detalle"][:150],
+                    data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado" if data["medio"] else "Registrado",
+                    created_by=current_user().id)
+                db.session.add(rec); db.session.flush()
+                log_action("registrar gasto y salida de dinero","gastos",rec.id,f"{data['categoria']}; total {total}; medio {data['medio']}")
+                db.session.commit(); flash("Gasto guardado. Total: Gs. "+str(total))
+            except (InvalidOperation,ValueError):
+                db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
+            return redirect(url_for("module_page",module="gastos"))
+        items=Record.query.filter_by(module="gastos").order_by(Record.created_at.desc()).all()
+        q=request.args.get("q","").strip().casefold()
+        items=[r for r in items if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
+        <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+        <div><label>Categoría</label><input name="categoria" required></div><div><label>Medio de pago</label><select name="medio"><option value="">Pendiente / no pagado</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
+        <div><label>Comprobante</label><input name="comprobante"></div>
+        <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
+        <div><label>Artículo / descripción</label><input name="item[]" required></div><div><label>Cantidad</label><input name="cantidad_item[]" type="number" min="0.001" step="0.001" required></div><div><label>Precio unitario (Gs.)</label><input name="precio_item[]" type="number" min="0" step="0.01" required></div>
+        </div></div><p><button type="button" onclick="addGastoItem()">+ Agregar artículo</button></p></div>
+        <div style="align-self:end"><button>Guardar gasto</button></div></form>
+        <script>function addGastoItem(){const root=document.getElementById('gasto-items');const row=root.querySelector('.gasto-item').cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');root.appendChild(row)}</script></section>
+        <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
+        <table><tr><th>Fecha</th><th>Categoría</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Imprimir</th></tr>
+        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        """,title=title,items=items,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+    if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
+        payment_rows=Record.query.filter_by(module="pagos_cuentas").order_by(Record.created_at.desc()).all()
+        originals=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all()
+        if request.method=="POST":
+            action=request.form.get("accion","crear")
+            if action=="pago":
+                try:
+                    rid=int(request.form.get("registro_id","")); original=db.get_or_404(Record,rid)
+                    if original.module!=module: abort(400)
+                    amount=Decimal(request.form.get("importe","").replace(",","."))
+                    original_data=json.loads(original.data or "{}")
+                    paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
+                              if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
+                    balance=original.amount-paid
+                    if amount<=0 or amount>balance: raise InvalidOperation()
+                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":request.form.get("fecha",""),
+                        "beneficiario":original_data.get("beneficiario",original_data.get("cliente","")),
+                        "concepto":original_data.get("concepto",""),"numero_cheque":original_data.get("numero",""),
+                        "importe":str(amount),"medio":request.form.get("medio","Efectivo"),"detalle":request.form.get("detalle","")}
+                    pay=Record(module="pagos_cuentas",title="Pago · "+original.title,data=json.dumps(paydata,ensure_ascii=False),
+                        amount=amount,status="Pagado",created_by=current_user().id)
+                    db.session.add(pay); db.session.flush()
+                    new_balance=balance-amount
+                    original.status="Pagado" if new_balance==0 else "Pago parcial"
+                    log_action("registrar pago parcial/final",module,original.id,f"Pago {amount}; saldo {new_balance}; medio {paydata['medio']}")
+                    log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title+"; importe "+str(amount))
+                    db.session.commit(); flash("Pago registrado. Saldo restante: Gs. "+str(new_balance))
+                except (InvalidOperation,ValueError):
+                    db.session.rollback(); flash("No se pudo registrar: verificá el importe y el saldo pendiente.")
+                return redirect(url_for("module_page",module=module))
+            if action=="desembolsar" and module=="cheques":
+                try:
+                    rid=int(request.form.get("registro_id","")); original=db.get_or_404(Record,rid)
+                    if original.module!="cheques" or original.status=="Desembolsado": abort(400)
+                    d=json.loads(original.data or "{}")
+                    paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
+                              if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
+                    balance=original.amount-paid
+                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":datetime.now().strftime("%Y-%m-%d"),
+                        "beneficiario":d.get("beneficiario",""),"concepto":"Desembolso de cheque "+d.get("numero",""),
+                        "numero_cheque":d.get("numero",""),"importe":str(balance),"medio":"Cheque","detalle":"Cheque desembolsado"}
+                    pay=Record(module="pagos_cuentas",title="Desembolso · "+original.title,data=json.dumps(paydata,ensure_ascii=False),
+                        amount=balance,status="Desembolsado",created_by=current_user().id)
+                    db.session.add(pay); original.status="Desembolsado"
+                    db.session.flush(); log_action("desembolsar cheque","cheques",original.id,"Importe "+str(balance))
+                    log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title)
+                    db.session.commit(); flash("Cheque marcado como desembolsado y registrado en Auditoría.")
+                except (ValueError,InvalidOperation):
+                    db.session.rollback(); flash("No se pudo desembolsar el cheque.")
+                return redirect(url_for("module_page",module=module))
+            data={key:("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip()
+                  for key,label,kind,req in fields}
+            if module=="cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
+            if module=="cheques" and not data.get("estado"): data["estado"]="Pendiente"
+            for key,label,kind,req in fields:
+                if req and not data.get(key): flash("Falta completar: "+label); return redirect(url_for("module_page",module=module))
+            try:
+                amount=Decimal(data.get("importe","0").replace(",","."))
+                if amount<=0: raise InvalidOperation()
+                status=data.get("estado","Pendiente") if module in ("cuentas_cobrar","cheques") else "Pendiente"
+                rec=Record(module=module,title=(data.get("beneficiario") or data.get("cliente") or data.get("concepto") or data.get("numero") or title)[:220],
+                    data=json.dumps(data,ensure_ascii=False),amount=amount,status=status,created_by=current_user().id)
+                db.session.add(rec); db.session.flush(); log_action("crear cuenta / cheque",module,rec.id,rec.title)
+                db.session.commit(); flash("Registro guardado.")
+            except (InvalidOperation,ValueError):
+                db.session.rollback(); flash("Ingresá un importe válido mayor que cero.")
+            return redirect(url_for("module_page",module=module))
+        summaries=[]
+        for rec in originals:
+            d=json.loads(rec.data or "{}")
+            paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
+                      if json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rec.id)),Decimal("0"))
+            summaries.append((rec,d,paid,max(Decimal("0"),rec.amount-paid)))
+        return render_template_string(BASE+"""
+        <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
+        {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
+        {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Incluye cheque adelantado</label>
+        {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
+        {% elif kind=='select' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
+        {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}
+        <div style="align-self:end"><button>Guardar registro</button></div></form></section>
+        <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
+        <table><tr><th>Fecha</th><th>Registro</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
+        {% for r,d,paid,balance in summaries %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
+        {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if request.method == "POST":
         data = {key: ("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip() for key,label,kind,req in fields}
         if module == "cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
