@@ -176,7 +176,7 @@ def admin_required(fn):
 
 BASE = """
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title }} · Freddy Rojas</title><style>
+<title>{{ title }} · El Toro S.A.</title><style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#182536;background:#f3f6fa;font-synthesis:none;text-rendering:optimizeLegibility}
 *{box-sizing:border-box}html{min-height:100%;background:#f3f6fa}body{margin:0;min-height:100vh;background:#f3f6fa;color:#182536;font-size:14px;line-height:1.5}
 a{color:#2459a9;text-decoration:none}a:hover{color:#153d7a;text-decoration:underline}
@@ -249,9 +249,9 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 
 @media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
-</style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Sistema de gestión empresarial</div></div>
+</style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
-{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
+{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>{% for key,meta in MODULES.items() %}{% if user.role=='admin' or key in (user.areas or '').split(',') or meta[1] in (user.areas or '').split(',') %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a>{% endif %}<a href="{{url_for('approvals')}}">Autorizaciones</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% if user.role=='admin' %}<a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
