@@ -276,9 +276,9 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 {% if user.role=='admin' or allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a>{% endif %}
 {% if user.role=='admin' or allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
-{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a>{% endif %}
+{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% if user.role=='admin' or allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
-<a href="{{url_for('change_password')}}">Mi contraseña</a></nav></aside>{% endif %}
+</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
 
@@ -925,10 +925,26 @@ def delete_user(uid):
     return redirect(url_for("users"))
 
 
+@app.get("/accesos")
+@admin_required
+def access_report():
+    rows = db.session.query(AuditLog, User.username).outerjoin(User, AuditLog.user_id == User.id).filter(
+        AuditLog.action.in_(["inicio de sesión", "cerrar sesión"])
+    ).order_by(AuditLog.created_at.desc()).limit(500).all()
+    return render_template_string(BASE + """
+    <section class="card"><h2>Informe de accesos</h2><p>Últimos 500 ingresos y cierres de sesión registrados.</p>
+    <div style="overflow-x:auto"><table><tr><th>Fecha y hora (UTC)</th><th>Usuario</th><th>Evento</th></tr>
+    {% for entry, username in rows %}<tr><td>{{entry.created_at.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{username or 'Usuario eliminado'}}</td><td>{{entry.action}}</td></tr>{% else %}<tr><td colspan="3">Todavía no hay accesos registrados.</td></tr>{% endfor %}
+    </table></div></section></main><footer>El Toro S.A. · Registro de accesos</footer></body></html>
+    """, title="Informe de accesos", rows=rows)
+
+
 @app.route("/mi-cuenta/contrasena", methods=["GET","POST"])
 @login_required
 def change_password():
     u = current_user()
+    if u.role != "admin":
+        abort(403)
     if request.method == "POST":
         current = request.form.get("current_password","")
         new = request.form.get("new_password","")
