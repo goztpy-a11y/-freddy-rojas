@@ -265,18 +265,47 @@ button,.btn{min-height:41px;box-shadow:0 2px 5px rgba(36,91,176,.12)}
 @media(max-width:900px){header{left:0;height:68px;padding:0 16px}.sidebar{position:relative;top:68px;width:100%;height:auto;max-height:none;padding:10px 12px;display:block}.sidebar-brand{display:none}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:3px}nav a{white-space:nowrap;min-height:37px;padding:9px 11px;font-size:12px}nav a:first-child{margin-bottom:0}main{margin-left:0;padding:94px 15px 24px}body:not(:has(.sidebar)) main{padding:94px 15px 24px}.card{padding:17px;margin-bottom:14px}h2{font-size:19px}}
 @media(max-width:520px){header{height:64px;padding:0 12px}header strong{font-size:16px}header .small{display:none}header>div:last-child{font-size:11px}.sidebar{top:64px}main{padding:88px 10px 18px}.grid{grid-template-columns:1fr}.card{border-radius:10px;padding:15px}table{min-width:650px}th,td{padding:10px}.actions input{max-width:100%;min-width:0}}
 @media print{.sidebar,header,button,.btn,form,nav,.flash{display:none!important}body{background:#fff!important;color:#000!important;font-size:11pt}main,body:not(:has(.sidebar)) main{margin:0!important;padding:0!important;max-width:none!important}.card{box-shadow:none!important;border:0!important;padding:8px!important;break-inside:avoid}table{width:100%;font-size:9pt}th,td{padding:5px;border:1px solid #bbb!important}th{background:#eee!important;color:#000!important}a{color:#000!important;text-decoration:none!important}.inventory-qty{font-size:24pt;font-weight:800}}.inventory-list table{font-size:17px}.inventory-list th,.inventory-list td{padding:16px 18px}.inventory-qty{font-size:25px;font-weight:800;color:#183c68}
+.nav-caption{margin:17px 11px 5px;color:#89a5c5;font-size:10px;font-weight:800;letter-spacing:1.5px}
+.sidebar{background:linear-gradient(180deg,#102844 0%,#17395f 100%);border-right:1px solid rgba(255,255,255,.08)}
+nav{gap:4px}nav a{min-height:42px;border:1px solid transparent;border-radius:9px;letter-spacing:.05px}
+nav a:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.08)}
+nav a:first-child{background:rgba(90,151,235,.19);border-color:rgba(127,177,245,.16)}
+header{backdrop-filter:blur(12px);background:rgba(255,255,255,.96)}
+.card{border-color:#e1e8f1;border-radius:15px;box-shadow:0 7px 24px rgba(20,45,75,.045)}
+button,.btn{border-radius:9px;transition:transform .15s,box-shadow .15s}
+button:hover,.btn:hover{transform:translateY(-1px);box-shadow:0 5px 12px rgba(21,61,113,.14)}
+input,select,textarea{border-radius:9px!important;border-color:#d5deea!important;min-height:40px}
+input:focus,select:focus,textarea:focus{outline:3px solid rgba(52,117,205,.15);border-color:#4a83cc!important}
+.area-hero{padding:30px 32px;background:linear-gradient(120deg,#fff 0%,#f1f6fd 100%);border-color:#dce7f5;margin-bottom:22px}
+.area-eyebrow{font-size:10px;font-weight:850;letter-spacing:1.7px;color:#3268a9;margin-bottom:10px}
+.area-hero h1{font-size:clamp(25px,3vw,34px);margin:0 0 8px;letter-spacing:-1px}
+.area-hero p{font-size:14px;color:#65768b;max-width:680px;margin:0 0 19px}
+.area-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.area-link{display:flex;align-items:center;gap:14px;min-height:92px;padding:17px 18px;border:1px solid #e0e8f2;border-radius:13px;background:#fff;color:#1b304a;box-shadow:0 4px 14px rgba(22,48,78,.035);transition:transform .16s,border-color .16s,box-shadow .16s}
+.area-link:hover{transform:translateY(-2px);border-color:#b8cce6;box-shadow:0 10px 24px rgba(22,48,78,.08);text-decoration:none}
+.area-link-icon{width:40px;height:40px;display:grid;place-items:center;flex-shrink:0;border-radius:12px;background:#edf4fd;color:#2d63a7;font-weight:850;font-size:13px}
+.area-link-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.area-link-copy strong{font-size:14px;color:#1c3452}
+.area-link-copy small{font-size:12px;line-height:1.4;color:#738399}
+.area-arrow{margin-left:auto;font-size:19px;color:#7e9abc}
+@media(max-width:700px){.area-grid{grid-template-columns:1fr}.area-hero{padding:23px 20px}.area-link{min-height:78px}.nav-caption{display:none}}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Sistema de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial</a>{% endif %}
-{% if user.role=='admin' or allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a>{% endif %}
-{% if user.role=='admin' or allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
-{% if user.role=='admin' or allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a><a href="{{url_for('module_page',module='cobros_cuentas')}}">Cobros de cuentas</a>{% endif %}
-{% if user.role=='admin' or allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a>{% endif %}
-{% if user.role=='admin' or allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
+{% if user.role=='admin' %}
+<div class="nav-caption">ÁREAS DE TRABAJO</div>
+<a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
+{% else %}
+{% if allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a>{% endif %}
+{% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
+{% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a><a href="{{url_for('module_page',module='cobros_cuentas')}}">Cobros de cuentas</a>{% endif %}
+{% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
+{% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
+{% endif %}
 {% if user.role=='admin' or allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
 </nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
