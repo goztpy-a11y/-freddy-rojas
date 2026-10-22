@@ -307,14 +307,21 @@ def flota():
         return redirect(url_for("flota"))
     equip=[(r,_data(r)) for r in _rows("flota_equipo")]
     moves=[(r,_data(r)) for r in _rows("flota")]
+    sales=[(r,_data(r)) for r in _rows("ventas")]
     fuel=[(r,_data(r)) for r in (_rows("combustible_camion")+_rows("combustible"))]
     truck_summaries=[]
     for er,ed in equip:
         if ed.get("tipo")=="Camión":
             truck_moves=[md for mr,md in moves if md.get("camion")==ed.get("nombre")]
+            truck_sales=[sd for sr,sd in sales if sd.get("camion")==ed.get("nombre")]
             truck_fuel=[fd for fr,fd in fuel if fd.get("camion")==ed.get("nombre")]
-            truck_tires=[_data(gr) for gr in _rows("gomeria_camiones") if _data(gr).get("camion")==ed.get("nombre")]
-            truck_summaries.append({"nombre":ed.get("nombre"),"kg":sum((Decimal(str(md.get("kg",0))) for md in truck_moves),Decimal("0")),"litros":sum((Decimal(str(fd.get("litros",0))) for fd in truck_fuel),Decimal("0")),"gomeria":sum((Decimal(str(td.get("costo",0))) for td in truck_tires),Decimal("0")),"count":len(truck_moves)})
+            truck_tires=[_data(gr) for gr in (_rows("gomeria_camiones")+_rows("gomeria")) if _data(gr).get("camion")==ed.get("nombre")]
+            truck_summaries.append({"nombre":ed.get("nombre"),
+                "kg_entregados":sum((Decimal(str(sd.get("cantidad",0))) for sd in truck_sales),Decimal("0")),
+                "kg_retiros":sum((Decimal(str(md.get("kg",0))) for md in truck_moves),Decimal("0")),
+                "litros":sum((Decimal(str(fd.get("litros",0))) for fd in truck_fuel),Decimal("0")),
+                "gomeria":sum((Decimal(str(td.get("costo",0))) for td in truck_tires),Decimal("0")),
+                "count":len(truck_moves)+len(truck_sales)})
     return _page("Flota", """
     {% if user.role=='admin' %}<section class="card"><h2>Agregar camión o maquinaria</h2><form method="post" class="grid"><input type="hidden" name="accion" value="equipo">
     <div><label>Nombre / chapa / código</label><input name="camion" required></div><div><label>Tipo</label><select name="tipo"><option>Camión</option><option>Maquinaria</option></select></div>
@@ -322,8 +329,8 @@ def flota():
     <section class="card"><h2>Registrar retiro de mercadería</h2><form method="post" class="grid"><input type="hidden" name="accion" value="movimiento">
     <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r,d in equip %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
     <div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Kilogramos traídos</label><input type="number" name="kg" min="0" step="0.001" required></div><div><label>Material / carga</label><input name="material"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Registrar retiro</button></div></form></section>
-    <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg registrados</th><th>Combustible cargado (L)</th><th>Gomería (Gs.)</th><th>Registros</th></tr>
-    {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg}}</td><td>{{s.litros}}</td><td>{{s.gomeria}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg entregados en ventas</th><th>Kg de retiros registrados</th><th>Combustible cargado (L)</th><th>Gomería (Gs.)</th><th>Registros</th></tr>
+    {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg_entregados}}</td><td>{{s.kg_retiros}}</td><td>{{s.litros}}</td><td>{{s.gomeria}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
     """,equip=equip,moves=moves,fuel=fuel,truck_summaries=truck_summaries,today=datetime.now().strftime("%Y-%m-%d"))
 
 @app.route("/combustible-stock",methods=["GET","POST"])
