@@ -72,7 +72,7 @@ MODULES = {
   ("nombre","Repuesto","text",True),("codigo","Código / referencia","text",False),("stock","Stock disponible","number",True),
   ("stock_minimo","Stock mínimo","number",False),("ubicacion","Ubicación","text",False)]),
  "movimientos_stock": ("Movimientos de stock", "inventario", [
-  ("repuesto","Repuesto","text",True),("tipo","Movimiento (entrada / uso / salida)","text",True),
+  ("repuesto","Repuesto","text",True),("tipo","Movimiento (entrada / uso / salida)","select",True),
   ("cantidad","Cantidad","number",True),("motivo","Motivo / camión / trabajo relacionado","text",True)]),
  "auditoria": ("Revisión y auditoría", "auditoria", [
   ("referencia","Ticket / transferencia / proveedor / hoja","text",True),("verificacion","Qué se verificó","text",True),
@@ -320,6 +320,10 @@ def module_page(module):
         flash("Tu usuario no tiene permiso para acceder a este módulo.")
         abort(403)
     title, area, fields = MODULES[module]
+    if module == "combustible":
+        return redirect(url_for("combustible_stock"))
+    if module == "gomeria":
+        return redirect(url_for("gomeria_camiones"))
     if module == "materiales":
         if request.method == "POST":
             name=request.form.get("nombre","").strip()
@@ -727,6 +731,7 @@ def module_page(module):
     {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Atrasado</option></select>
     {% elif kind=='select' and module=='cheques' %}<select name="{{key}}" required><option>Pendiente</option><option>Desembolsado</option></select>
      {% elif kind=='select' and module=='gomeria' %}<select name="{{key}}" required><option value="Reparación de cubierta">Reparación de cubierta</option><option value="Cambio de cubierta">Cambio de cubierta</option><option value="Reparación de cámara">Reparación de cámara</option><option value="Cambio de cámara">Cambio de cámara</option><option value="Otro">Otro</option></select>
+     {% elif kind=='select' and module=='movimientos_stock' %}<select name="{{key}}" required><option value="entrada">Entrada</option><option value="uso">Uso</option><option value="salida">Salida</option></select>
     {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.001"{% endif %}>{% endif %}</div>{% endfor %}
     <div style="align-self:end"><button class="btn">Guardar registro</button></div></form>
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
