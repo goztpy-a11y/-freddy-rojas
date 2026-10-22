@@ -19,6 +19,7 @@ MODULES.update({
     "combustible_camion": ("Cargas de combustible por camión", "estacion", []),
     "mantenimiento": ("Mantenimiento de camiones y maquinarias", "estacion", []),
     "gomeria_camiones": ("Gomería por camión", "gomeria", []),
+    "caja_chica": ("Caja chica", "caja", []),
 })
 
 def _data(r):
@@ -549,3 +550,72 @@ def fletes():
     <table><tr><th>Fecha</th><th>Chofer</th><th>Destino</th><th>Camión</th><th>Importe</th><th>Detalle</th><th>Imprimir</th></tr>
     {% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('chofer')}}</td><td>{{d.get('destino')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('detalle')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
     """,rows=rows,q=q,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
+
+
+# Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
+@app.route("/caja-chica", methods=["GET", "POST"])
+@login_required
+def caja_chica():
+    _can_caja()
+    if request.method == "POST":
+        action=request.form.get("accion","gasto")
+        fecha=request.form.get("fecha", datetime.now().strftime("%Y-%m-%d")).strip()
+        medio=request.form.get("medio","").strip()
+        try:
+            if action == "saldo":
+                saldo=Decimal(request.form.get("saldo","").strip().replace(",","."))
+                if saldo < 0 or not fecha:
+                    raise InvalidOperation()
+                _save("caja_chica","Actualización de saldo de caja chica",{
+                    "tipo":"saldo","fecha":fecha,"saldo":str(saldo),
+                    "detalle":request.form.get("detalle","").strip(),
+                    "medio":medio,"clasificacion":"saldo"
+                },saldo,"Saldo actualizado")
+                flash("Saldo disponible de caja chica actualizado.")
+            else:
+                detalle=request.form.get("detalle","").strip()
+                importe=Decimal(request.form.get("importe","").strip().replace(",","."))
+                clasificacion=request.form.get("clasificacion","caja_chica").strip()
+                if not detalle or not fecha or importe<=0 or clasificacion not in ("caja_chica","gastos") or not medio:
+                    raise InvalidOperation()
+                _save("caja_chica","Gasto caja chica · "+detalle[:150],{
+                    "tipo":"gasto","fecha":fecha,"detalle":detalle,"importe":str(importe),
+                    "medio":medio,"clasificacion":clasificacion
+                },importe,"Registrado")
+                log_action("registrar gasto de caja chica","caja_chica",None,
+                           f"{detalle}; importe {importe}; clasificación {clasificacion}; medio {medio}")
+                flash("Movimiento de caja chica guardado.")
+        except (InvalidOperation,ValueError):
+            db.session.rollback()
+            flash("Revisá la fecha, la descripción y el monto. El saldo no puede ser negativo y el gasto debe ser mayor que cero.")
+        return redirect(url_for("caja_chica"))
+    rows=_rows("caja_chica")
+    latest_balance=next((r for r in rows if _data(r).get("tipo")=="saldo"),None)
+    if latest_balance:
+        bd=_data(latest_balance)
+        balance=Decimal(str(bd.get("saldo","0")))
+        expenses=[r for r in rows if _data(r).get("tipo")=="gasto" and r.created_at>latest_balance.created_at]
+        balance-=sum((Decimal(str(r.amount or 0)) for r in expenses),Decimal("0"))
+    else:
+        balance=Decimal("0")
+    q=request.args.get("q","").strip().casefold()
+    shown=[r for r in rows if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+    return _page("Caja chica", """
+    <section class="card"><h2>Saldo disponible de caja chica</h2><h3>Gs. {{balance}}</h3>
+    <form method="post" class="grid"><input type="hidden" name="accion" value="saldo">
+    <div><label>Monto disponible actual (Gs.)</label><input name="saldo" type="number" min="0" step="0.01" required></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Detalle del ajuste (opcional)</label><input name="detalle"></div>
+    <div style="align-self:end"><button>Guardar monto disponible</button></div></form></section>
+    <section class="card"><h2>Registrar gasto de caja chica</h2><form method="post" class="grid">
+    <input type="hidden" name="accion" value="gasto">
+    <div><label>En qué se gastó</label><input name="detalle" required></div>
+    <div><label>Monto gastado (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
+    <div><label>Clasificación</label><select name="clasificacion" required><option value="caja_chica">Caja chica (no sumar a Gastos)</option><option value="gastos">Gastos (sumar al resumen de Gastos)</option></select></div>
+    <div style="align-self:end"><button>Guardar gasto</button></div></form></section>
+    <section class="card"><h2>Historial de movimientos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar descripción o monto"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
+    <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th></tr>
+    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{'Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto'}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('saldo') if d.get('tipo')=='saldo' else r.amount}}</td></tr>{% endfor %}</table></section>
+    """,balance=balance,shown=shown,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
