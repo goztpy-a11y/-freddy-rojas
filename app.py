@@ -15,6 +15,13 @@ app = Flask(__name__)
 def paraguay_now():
     return datetime.now(ZoneInfo("America/Asuncion")).replace(tzinfo=None)
 
+def local_time(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value=value.replace(tzinfo=ZoneInfo("UTC"))
+    return value.astimezone(ZoneInfo("America/Asuncion")).replace(tzinfo=None)
+
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-only-change-me")
 app.config["ADMIN_CONFIGURED"] = bool(os.environ.get("ADMIN_PASSWORD"))
 db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db")
@@ -91,7 +98,7 @@ class User(db.Model):
     role = db.Column(db.String(30), nullable=False, default="caja")
     areas = db.Column(db.Text, nullable=False, default="caja")
     active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 class Material(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -100,7 +107,7 @@ class Material(db.Model):
     wholesale_price = db.Column(db.Numeric(16, 2), nullable=True)
     unit = db.Column(db.String(30), nullable=False, default="kg")
     stock = db.Column(db.Numeric(16, 3), nullable=False, default=0)
-    updated_at = db.Column(db.DateTime, default=paraguay_now, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class CompanyAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -111,7 +118,7 @@ class CompanyAccount(db.Model):
     opening_balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 class Record(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -124,8 +131,8 @@ class Record(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     approved_by = db.Column(db.Integer, db.ForeignKey("user.id"))
     paid_by = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=paraguay_now, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -134,7 +141,7 @@ class AuditLog(db.Model):
     module = db.Column(db.String(40), nullable=False)
     record_id = db.Column(db.Integer)
     detail = db.Column(db.Text, nullable=False, default="")
-    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 class SystemSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -499,7 +506,7 @@ footer{display:block!important;color:#8b99aa}
 
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "allowed": allowed, "company_settings": read_system_settings()}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "local_time": local_time, "allowed": allowed, "company_settings": read_system_settings()}
 
 @app.get("/health")
 def health():
@@ -623,7 +630,7 @@ def index():
         <section class="fr-rail-card"><span class="fr-kicker">ACCESO DIRECTO</span><h3>¿Necesitás consultar algo?</h3><p>Ingresá al historial general para revisar los registros guardados.</p><a class="fr-rail-link" href="{{url_for('general_history')}}">Abrir historial <b>→</b></a><div class="fr-rail-divider"></div><p>También podés consultar e imprimir los informes disponibles.</p><a class="fr-rail-link" href="{{url_for('reports')}}">Ver informes <b>→</b></a></section>
       </aside>
     </div>
-    {% if user.role=='admin' %}<section class="fr-section-block fr-activity-block" id="ultimos-movimientos"><div class="fr-section-title"><div><span class="fr-kicker">TRAZABILIDAD</span><h2>Actividad reciente</h2></div><a class="fr-view-all" href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Área</th><th>Registro</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="fr-empty-state"><span>▤</span><strong>Sin movimientos recientes</strong><p>Cuando se registren operaciones, aparecerán en esta sección.</p></div>{% endif %}</section>{% endif %}
+    {% if user.role=='admin' %}<section class="fr-section-block fr-activity-block" id="ultimos-movimientos"><div class="fr-section-title"><div><span class="fr-kicker">TRAZABILIDAD</span><h2>Actividad reciente</h2></div><a class="fr-view-all" href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Área</th><th>Registro</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{% for r in records %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="fr-empty-state"><span>▤</span><strong>Sin movimientos recientes</strong><p>Cuando se registren operaciones, aparecerán en esta sección.</p></div>{% endif %}</section>{% endif %}
     </main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""" , title="Panel principal", pending=pending, accounts=accounts, records=records, today_count=today_count, material_count=material_count, active_users=active_users, quick_actions=quick_actions, greeting=greeting)
 
 @app.get("/area/<section>")
@@ -780,7 +787,7 @@ def module_page(module):
         <section class="card inventory-list"><h2>Materiales disponibles</h2><button class="btn" type="button" onclick="window.print()">Imprimir inventario</button>
         <table><tr><th>Material</th><th>Cantidad disponible</th><th>Unidad</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td class="inventory-qty">{{m.stock}}</td><td>{{m.unit}}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Historial de inventario</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
-        <table><tr><th>Fecha/hora</th><th>Material</th><th>Cantidad agregada</th><th>Disponible</th><th>Imprimir</th></tr>{% for r,d in hist_parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{d.get('cantidad_ingresada','')}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed)
+        <table><tr><th>Fecha/hora</th><th>Material</th><th>Cantidad agregada</th><th>Disponible</th><th>Imprimir</th></tr>{% for r,d in hist_parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{d.get('cantidad_ingresada','')}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed)
     if module == "tickets":
         materials=Material.query.order_by(Material.name).all()
         if request.method=="POST":
@@ -813,7 +820,7 @@ def module_page(module):
         <h3>Materiales del ticket</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><button class="btn">Guardar ticket</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>function addTicketLine(){const root=document.getElementById('ticket-lines');const first=root.querySelector('.ticket-line');const copy=first.cloneNode(true);copy.querySelector('select').value='';copy.querySelector('input').value='';copy.querySelector('select').required=false;copy.querySelector('input').required=false;root.appendChild(copy)}</script>
         </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q)
     if module == "auditoria" and request.method == "GET":
@@ -824,8 +831,8 @@ def module_page(module):
             if rec.module not in modules_allowed and rec.module not in {"pagos_diarios","prestamos_pagos","pagos_cuentas","combustible_camion","gomeria_camiones","fletes","planillas","flota","mantenimiento","gastos"}: continue
             d=json.loads(rec.data or "{}"); hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
             if q and q not in hay: continue
-            if since and rec.created_at.strftime("%Y-%m-%d")<since: continue
-            if until and rec.created_at.strftime("%Y-%m-%d")>until: continue
+            if since and local_time(rec.created_at).strftime("%Y-%m-%d")<since: continue
+            if until and local_time(rec.created_at).strftime("%Y-%m-%d")>until: continue
             if amount_filter and amount_filter not in str(rec.amount): continue
             results.append((rec,d))
         logs=AuditLog.query.order_by(AuditLog.created_at.desc()).all()
@@ -836,8 +843,8 @@ def module_page(module):
         <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
         <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module='auditoria')}}">Limpiar</a></div></form>
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
-        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{x.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
+        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{local_time(x.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
     if module == "repuestos":
         if request.method=="POST":
             name=request.form.get("nombre","").strip()
@@ -879,7 +886,7 @@ def module_page(module):
         <div style="align-self:end"><button>Guardar / agregar stock</button></div></form></section>
         <section class="card inventory-list"><h2>Artículos y stock disponible</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo o código"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir inventario</button></form>
         <table><tr><th>Artículo</th><th>Código</th><th>Disponible</th><th>Stock mínimo</th><th>Ubicación</th></tr>{% for r,d in current_items %}<tr><td>{{d.get('nombre')}}</td><td>{{d.get('codigo')}}</td><td class="inventory-qty">{{d.get('stock')}}</td><td>{{d.get('stock_minimo')}}</td><td>{{d.get('ubicacion')}}</td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Historial de entradas</h2><table><tr><th>Fecha/hora</th><th>Artículo</th><th>Cantidad agregada</th><th>Stock tras registro</th><th>Imprimir</th></tr>{% for r,d in history %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cantidad_ingresada',d.get('stock'))}}</td><td>{{d.get('stock')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        <section class="card"><h2>Historial de entradas</h2><table><tr><th>Fecha/hora</th><th>Artículo</th><th>Cantidad agregada</th><th>Stock tras registro</th><th>Imprimir</th></tr>{% for r,d in history %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cantidad_ingresada',d.get('stock'))}}</td><td>{{d.get('stock')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,current_items=current_items,history=history,q=q)
     if module == "gastos":
         if request.method == "POST":
@@ -951,7 +958,7 @@ def module_page(module):
         <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
         <table><tr><th>Fecha</th><th>Origen</th><th>Categoría / proveedor</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Imprimir</th></tr>
         {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
-        {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{r.created_at.strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
@@ -1068,7 +1075,7 @@ def module_page(module):
         <div style="align-self:end"><button>Guardar registro</button></div></form></section>
         <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
         <table><tr><th>Fecha</th><th>Registro</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
-        {% for r,d,paid,balance in summaries %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
+        {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
         {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
@@ -1165,8 +1172,8 @@ def module_page(module):
     for r in items:
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         parsed.append((r,d))
     return render_template_string(BASE+"""
@@ -1182,7 +1189,7 @@ def module_page(module):
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
     </section><section class="card"><h2>Historial completo</h2><form method="get" class="grid"><div><label>Buscar en cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Filtrar por monto</label><input name="monto" value="{{amount_filter}}"></div><div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module=module)}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
     {% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th><th>Imprimir</th></tr>
-    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
+    {% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
 
 
 @app.post("/materiales/<int:mid>/precio")
@@ -1217,7 +1224,7 @@ def approvals():
         parsed.append((r,d,max(Decimal("0"),Decimal(str(r.amount))-paid)))
     return render_template_string(BASE+"""
     <section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
-    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
+    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
     {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status in ('Autorizado','Pago parcial') and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Importe a pagar ahora (Gs.)</label><input name="importe" type="number" min="0.01" max="{{remaining}}" step="0.01" value="{{remaining}}" required><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago total o parcial</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
 
 @app.post("/autorizaciones/<int:rid>/decidir")
@@ -1361,7 +1368,7 @@ def users():
     <section class="card"><h2>Usuarios y permisos</h2>
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 4 caracteres)</label><input type="password" name="password" minlength="4" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k != 'admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
-    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{local_time(u.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
 
 
 @app.route("/usuarios/<int:uid>/editar",methods=["GET","POST"])
@@ -1435,7 +1442,7 @@ def access_report():
     return render_template_string(BASE + """
     <section class="card"><h2>Informe de accesos</h2><p>Últimos 500 ingresos y cierres de sesión registrados.</p>
     <div style="overflow-x:auto"><table><tr><th>Fecha y hora (UTC)</th><th>Usuario</th><th>Evento</th></tr>
-    {% for entry, username in rows %}<tr><td>{{entry.created_at.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{username or 'Usuario eliminado'}}</td><td>{{entry.action}}</td></tr>{% else %}<tr><td colspan="3">Todavía no hay accesos registrados.</td></tr>{% endfor %}
+    {% for entry, username in rows %}<tr><td>{{local_time(entry.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{username or 'Usuario eliminado'}}</td><td>{{entry.action}}</td></tr>{% else %}<tr><td colspan="3">Todavía no hay accesos registrados.</td></tr>{% endfor %}
     </table></div></section></main><footer>El Toro S.A. · Registro de accesos</footer></body></html>
     """, title="Informe de accesos", rows=rows)
 
@@ -1490,8 +1497,8 @@ def report_module(module):
     for r in items:
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         results.append((r,d))
     return render_template_string(BASE+"""
@@ -1500,7 +1507,7 @@ def report_module(module):
     <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('report_module',module=module)}}">Limpiar</a></div></form>
     <p><button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
     <table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>
-    {% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe "+label if False else "Informe",label=MODULES[module][0],module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results)
+    {% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe "+label if False else "Informe",label=MODULES[module][0],module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results)
 
 @app.get("/historial")
 @login_required
@@ -1513,8 +1520,8 @@ def general_history():
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.module+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if sector and r.module!=sector: continue
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         results.append((r,d))
     sectors=[(k,MODULES[k][0]) for k in available]
@@ -1523,7 +1530,7 @@ def general_history():
     <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for k,v in sectors %}<option value="{{k}}" {% if sector==k %}selected{% endif %}>{{v}}</option>{% endfor %}</select></div>
     <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
     <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('general_history')}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
-    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
 
 @app.get("/imprimir/<int:rid>")
 @login_required
@@ -1533,7 +1540,7 @@ def print_record(rid):
     data=json.loads(rec.data or "{}")
     return render_template_string(BASE+"""
     <section class="card"><h2>{{MODULES.get(rec.module,(rec.module,))[0]}}</h2><h3>{{rec.title}}</h3>
-    <p><b>Fecha:</b> {{rec.created_at.strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
+    <p><b>Fecha:</b> {{local_time(rec.created_at).strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
     <table><tr><th>Dato</th><th>Información</th></tr>{% for k,v in data.items() %}{% if v is mapping %}<tr><td>{{k}}</td><td>{% for a,b in v.items() %}{{a}}: {{b}}<br>{% endfor %}</td></tr>{% elif v is sequence and v is not string %}<tr><td>{{k}}</td><td>{% for line in v %}{% if line is mapping %}{% for a,b in line.items() %}<b>{{a}}:</b> {{b}} &nbsp; {% endfor %}<br>{% else %}{{line}}<br>{% endif %}{% endfor %}</td></tr>{% else %}<tr><td>{{k}}</td><td>{{v}}</td></tr>{% endif %}{% endfor %}<tr><th>Monto total</th><th>{{rec.amount}}</th></tr></table>
     <p><button class="btn" onclick="window.print()">Imprimir</button> <a class="btn" href="{{url_for('module_page',module=rec.module)}}">Volver al sector</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Imprimir",rec=rec,data=data)
 
