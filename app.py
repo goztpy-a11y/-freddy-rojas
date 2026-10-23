@@ -489,7 +489,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
-{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
+{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
