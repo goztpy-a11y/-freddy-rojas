@@ -60,7 +60,7 @@ def pagos_diarios():
     today_rows=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))==today]
     # La vista diaria contiene únicamente la fecha local actual; el historial mensual conserva los demás días.
     # Al cambiar la fecha en Paraguay, los registros anteriores dejan de aparecer en "Pagos de hoy" y quedan en historial.
-    history=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%d/%m/%Y %H:%M"))!=today]
+    history=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))!=today]
     total_today=sum((Decimal(str(r.amount or 0)) for r in today_rows),Decimal("0"))
     total_history=sum((Decimal(str(r.amount or 0)) for r in history),Decimal("0"))
     return _page("Pagos diarios", """
