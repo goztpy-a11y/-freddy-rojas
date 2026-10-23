@@ -979,9 +979,18 @@ def module_page(module):
                         "importe":str(amount),"medio":request.form.get("medio","Efectivo"),"detalle":request.form.get("detalle","")}
                     is_collection=(module=="cuentas_cobrar")
                     pay_title=("Cobro · " if is_collection else "Pago · ")+original.title
+                    central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first() if not is_collection else None
+                    if not is_collection:
+                        if not central_account:
+                            flash("Primero registrá la cuenta central en Cuentas bancarias de El Toro S.A."); return redirect(url_for("module_page",module=module))
+                        if amount>Decimal(str(central_account.balance or 0)):
+                            flash("Saldo insuficiente en la cuenta central para registrar este pago."); return redirect(url_for("module_page",module=module))
+                        paydata["company_account_id"]=central_account.id
+                        paydata["cuenta_empresa"]=central_account.name or "Cuenta central"
                     pay=Record(module=payment_module,title=pay_title,data=json.dumps(paydata,ensure_ascii=False),
-                        amount=amount,status="Cobrado" if is_collection else "Pagado",created_by=current_user().id)
+                        amount=amount,status="Cobrado" if is_collection else "Pagado",company_account_id=central_account.id if central_account else None,created_by=current_user().id)
                     db.session.add(pay); db.session.flush()
+                    if central_account: central_account.balance-=amount
                     new_balance=balance-amount
                     original.status="Pagado" if new_balance==0 else ("Pago parcial" if not is_collection else "En proceso")
                     log_action("registrar cobro" if is_collection else "registrar pago parcial/final",module,original.id,f"Importe {amount}; saldo {new_balance}; medio {paydata['medio']}")
