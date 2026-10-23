@@ -1492,6 +1492,9 @@ def forbidden(e):
     return render_template_string(BASE+""" <section class="card"><h2>Acceso denegado</h2><p>Tu usuario no tiene permisos para esa acción. Si necesitás acceso, pedí al administrador que te asigne el área correspondiente.</p><a class="btn" href="{{url_for('index')}}">Volver</a></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Acceso denegado"),403
 
 import features  # Registra los módulos financieros y de flota de El Toro S.A.
+import pagos_ui  # Sustituye la pantalla antigua por el formulario con materiales
+import pagos_save  # Guarda pagos y registra entradas de inventario
+import materiales_report  # Informe de entradas y salidas de materiales
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT","10000")))
