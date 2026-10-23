@@ -361,6 +361,83 @@ tbody tr:hover td{background:#f5f9fc}
 #ultimos-movimientos table th:last-child{border-top-right-radius:8px}
 .status-pill{white-space:nowrap}
 @media(max-width:520px){.dashboard-overview{padding:16px}.dashboard-heading{align-items:flex-start}.dashboard-heading>div:first-child{min-width:0}.dashboard-heading p{font-size:13px}.dashboard-metrics>.metric-card{min-width:0}.metric-card>span{font-size:11px}.quick-action{padding:12px}}
+
+/* Rediseño integral: estilo de panel empresarial de Freddy Rojas */
+:root{--fr-ink:#172b45;--fr-muted:#6c7c91;--fr-blue:#2865ad;--fr-teal:#15969a;--fr-border:#e2eaf3;--fr-bg:#f3f6fa;--fr-white:#fff}
+html,body{background:var(--fr-bg);color:var(--fr-ink)}
+header{left:252px;height:76px;padding:0 30px;background:rgba(255,255,255,.97);border-bottom:1px solid var(--fr-border);box-shadow:0 2px 12px rgba(23,43,69,.035)}
+header>div:first-child{gap:14px}
+header strong{font-size:19px;font-weight:800;letter-spacing:-.55px;color:var(--fr-ink)}
+header>div:last-child{background:#f5f8fc;border:1px solid var(--fr-border);border-radius:10px;padding:8px 12px;color:#51647c;font-size:12px}
+header .print-page{min-height:31px;padding:5px 10px;font-size:11px}
+.sidebar{width:252px;padding:24px 14px;background:linear-gradient(180deg,#112840 0%,#193b5d 100%);border-right:1px solid rgba(255,255,255,.08);box-shadow:3px 0 18px rgba(15,36,59,.05)}
+.sidebar-brand{padding:4px 9px 23px;margin-bottom:18px;gap:12px;border-bottom:1px solid rgba(255,255,255,.13)}
+.brand-mark{width:42px;height:42px;border-radius:12px;background:linear-gradient(145deg,#23a4a6,#2e6bb6);box-shadow:0 5px 14px rgba(0,0,0,.17)}
+.brand-copy strong{font-size:14px;letter-spacing:.7px}
+.brand-copy span{display:block!important;font-size:10px;letter-spacing:1.15px;color:#a8bed4}
+nav{gap:5px}
+.nav-caption{display:block;margin:21px 11px 7px;color:#83a6ca;font-size:10px;letter-spacing:1.35px}
+nav a,nav a:first-child{min-height:43px;padding:11px 13px;border:1px solid transparent;border-radius:9px;background:transparent;color:#d0dceb;font-size:13px;font-weight:600;transition:background .15s,border-color .15s}
+nav a:first-child{margin-bottom:2px}
+nav a:hover{background:rgba(255,255,255,.085);border-color:rgba(255,255,255,.07);color:#fff;transform:none}
+main{margin-left:252px;padding:108px 30px 36px;min-height:100vh;max-width:none}
+.card{background:var(--fr-white);border:1px solid var(--fr-border);border-radius:15px;padding:24px;margin-bottom:20px;box-shadow:0 5px 18px rgba(22,46,75,.035)}
+h1,h2,h3,h4{color:var(--fr-ink)}
+h2{font-size:21px;font-weight:780;letter-spacing:-.55px;margin:0 0 20px}
+section.card>h2{display:flex;align-items:center;gap:11px}
+section.card>h2:before{content:"";width:4px;height:23px;flex:0 0 4px;border-radius:5px;background:linear-gradient(180deg,var(--fr-teal),#3476c0)}
+h3{font-size:15px;font-weight:750}
+.grid{gap:16px}
+label{margin:13px 0 7px;font-size:12px;font-weight:750;color:#3c5068}
+input,select,textarea{min-height:43px;padding:10px 12px;background:#fff;border:1px solid #d7e1ec!important;border-radius:9px!important;color:#233952;font-size:13px;box-shadow:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:#4392ad!important;box-shadow:0 0 0 3px rgba(21,150,154,.12)}
+input::placeholder,textarea::placeholder{color:#9aa8b8}
+button,.btn{min-height:40px;padding:10px 15px;border:1px solid var(--fr-blue);border-radius:9px;background:var(--fr-blue);color:#fff;font-size:12px;font-weight:750;box-shadow:none;transition:background .15s,transform .15s,box-shadow .15s}
+button:hover,.btn:hover{background:#1d4e87;border-color:#1d4e87;box-shadow:0 4px 11px rgba(40,101,173,.15);transform:translateY(-1px);text-decoration:none}
+.actions{gap:9px}
+table{border:1px solid var(--fr-border);border-radius:11px;border-spacing:0;overflow:hidden;font-size:12px}
+th{padding:14px 13px;background:#f1f5fa;color:#5a6d83;border-bottom:1px solid #dfe7f0;font-size:10px;letter-spacing:.65px;font-weight:850}
+td{padding:13px;color:#344960;border-bottom:1px solid #eaf0f5}
+tbody tr:hover td{background:#f5f9fd}
+tr:last-child td{border-bottom:0}
+.card:has(table){overflow-x:auto}
+.flash{border-radius:10px;background:#eaf7f3;border:1px solid #cbeae0;color:#176e5d;font-weight:650;margin-bottom:18px}
+.warn{border-radius:10px}
+.dashboard-overview{padding:29px 30px;background:linear-gradient(125deg,#fff 0%,#f1f6fc 68%,#e9f6f5 100%);border:1px solid #dce7f2;position:relative;overflow:hidden}
+.dashboard-overview:after{content:"";position:absolute;right:-50px;top:-95px;width:245px;height:245px;border-radius:50%;background:radial-gradient(circle,rgba(21,150,154,.12),rgba(21,150,154,0));pointer-events:none}
+.dashboard-heading,.dashboard-metrics{position:relative;z-index:1}
+.dashboard-heading{align-items:flex-start}
+.dashboard-heading .eyebrow{display:inline-flex;background:#e6f3f5;border-radius:6px;padding:6px 9px;color:#187f88;font-size:10px;font-weight:850;letter-spacing:1.5px}
+.dashboard-heading h2{font-size:clamp(26px,3vw,34px);margin:9px 0 7px;letter-spacing:-1px}
+.dashboard-heading p{color:#6b7c91}
+.dashboard-date{background:#fff;border:1px solid #dfe8f1;border-radius:9px;padding:9px 13px;color:#405975;font-size:12px}
+.dashboard-metrics{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:22px}
+.dashboard-metrics>.metric-card{margin:0;padding:19px;border:1px solid #e0e8f1;border-left:4px solid #3478c6;border-radius:12px;background:#fff;box-shadow:0 5px 15px rgba(23,49,79,.04);transition:transform .16s,box-shadow .16s}
+.dashboard-metrics>.metric-card:nth-child(4n+2){border-left-color:#15969a}
+.dashboard-metrics>.metric-card:nth-child(4n+3){border-left-color:#7968c1}
+.dashboard-metrics>.metric-card:nth-child(4n+4){border-left-color:#d69a36}
+.dashboard-metrics>.metric-card:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(23,49,79,.08)}
+.metric-card>span{font-size:11px;letter-spacing:.2px;color:#64778d}
+.metric-card>strong{font-size:34px;color:#173d67;letter-spacing:-1.1px;margin:10px 0}
+.metric-card>a{font-size:11px;color:#2865ad;font-weight:800}
+.dashboard-actions{padding:24px}
+.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:17px}
+.section-heading h2{margin:0}
+.section-heading>span{color:#7b8ba0;font-size:11px}
+.quick-action-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.quick-action{min-height:78px;padding:14px;border:1px solid #e1e9f2;border-radius:12px;background:#fff;box-shadow:0 3px 11px rgba(22,46,75,.025);transition:transform .15s,border-color .15s,box-shadow .15s}
+.quick-action:hover{transform:translateY(-2px);border-color:#b4cbe5;box-shadow:0 8px 18px rgba(22,46,75,.07)}
+.quick-action-icon{width:39px;height:39px;flex-basis:39px;border-radius:11px;background:#e9f1ff;color:#2d66b2}
+.quick-action:nth-child(4n+2) .quick-action-icon{background:#e3f5f1;color:#147d76}
+.quick-action:nth-child(4n+3) .quick-action-icon{background:#f0edfc;color:#6c58b5}
+.quick-action:nth-child(4n+4) .quick-action-icon{background:#fff3df;color:#a86d18}
+.quick-action strong{font-size:12px}.quick-action small{color:#77889d;font-size:10px}
+.status-pill{padding:5px 9px;background:#edf4fb;color:#3d618a;border-radius:999px;font-size:10px;font-weight:800}
+.table-wrap{overflow-x:auto}
+footer{display:block!important;color:#8b99aa}
+@media(max-width:900px){header{left:0;height:66px;padding:0 17px}.sidebar{position:fixed;top:66px;bottom:auto;width:100%;height:auto;max-height:112px;padding:8px 11px;overflow-x:auto;overflow-y:hidden;box-shadow:0 4px 12px rgba(15,36,59,.06)}.sidebar-brand,.nav-caption{display:none!important}nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:2px}nav a,nav a:first-child{white-space:nowrap;min-height:36px;padding:8px 11px;margin:0}main{margin-left:0;padding:130px 17px 28px}body:not(:has(.sidebar)) main{padding:90px 17px 28px}.card{padding:19px}.dashboard-overview{padding:24px}}
+@media(max-width:520px){header{height:62px;padding:0 11px}header strong{font-size:16px}header>div:last-child{padding:5px 7px;font-size:10px;max-width:63%;white-space:nowrap;overflow:hidden}header .print-page{display:none}.sidebar{top:62px;max-height:98px;padding:7px 8px}nav a,nav a:first-child{font-size:11px;min-height:34px;padding:7px 9px}main{padding:116px 10px 20px}body:not(:has(.sidebar)) main{padding:82px 10px 20px}.card{padding:15px;border-radius:12px;margin-bottom:13px}h2{font-size:18px}.dashboard-overview{padding:16px}.dashboard-heading h2{font-size:23px}.dashboard-heading p{font-size:12px}.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.dashboard-metrics>.metric-card{padding:12px}.metric-card>span{font-size:10px}.metric-card>strong{font-size:27px}.quick-action-grid{grid-template-columns:1fr}.quick-action{min-height:70px;padding:11px}table{min-width:650px}th,td{padding:10px}.grid{gap:10px}}
+@media print{.sidebar,header,button,.btn,form,nav{display:none!important}footer{display:none!important}}
 </style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
