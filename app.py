@@ -6,6 +6,7 @@ from functools import wraps
 from io import BytesIO
 from flask import Flask, request, redirect, url_for, session, render_template_string, flash, abort, send_file
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -497,7 +498,25 @@ def inject_globals():
 
 @app.get("/health")
 def health():
-    return {"status":"ok","app":"freddy-rojas","database":"configured" if os.environ.get("DATABASE_URL") else "demo-sqlite"}
+    # Comprobación de solo lectura: no crea, actualiza ni elimina registros.
+    database_configured = bool(os.environ.get("DATABASE_URL"))
+    try:
+        db.session.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "app": "freddy-rojas",
+            "database": "connected" if database_configured else "demo-sqlite",
+            "read_only_check": "passed"
+        }, 200
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Fallo en comprobación de conexión de base de datos")
+        return {
+            "status": "error",
+            "app": "freddy-rojas",
+            "database": "unavailable",
+            "read_only_check": "failed"
+        }, 503
 
 @app.route("/login", methods=["GET","POST"])
 def login():
