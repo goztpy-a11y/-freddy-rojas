@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from flask import request, redirect, url_for, flash, abort
-from app import app, db, Record, Material, CompanyAccount, MODULES, current_user, log_action, paraguay_now
+from app import app, db, Record, Material, CompanyAccount, MODULES, current_user, log_action, paraguay_now, local_time
 from features import _rows, _data, _can_caja, _page
 
 MODULES["tickets_entrada"] = ("Tickets registrados", "caja", [])
@@ -116,15 +116,23 @@ def pagos_diarios():
         if k not in legacy: legacy[k]={"ticket":ticket,"persona":d.get("persona",""),"total":d.get("total","0"),"pagado":Decimal("0"),"fecha":d.get("fecha","")}
         legacy[k]["pagado"]+=Decimal(str(p.amount or 0))
     legacy_rows=list(legacy.values())
+    payment_history=[]
+    for p in payments:
+        d=_data(p)
+        if local_time(p.created_at).strftime("%Y-%m")!=month: continue
+        if q and q not in (p.title+" "+p.data+" "+str(p.amount)).casefold(): continue
+        payment_history.append((p,d))
     return _page("Pagos", """
     <section class="card"><h2>Pagos de tickets</h2><p>Seleccioná el importe que se va a pagar. Cada pago descuenta automáticamente el saldo de la cuenta central.</p>{% if account %}<p><b>Saldo disponible de la cuenta central:</b> {{account.currency}} {{account.balance}}</p>{% endif %}
     {% if not account %}<p class="warn">Primero registrá la cuenta central y su saldo inicial.</p>{% endif %}
     <form method="get" class="grid"><div><label>Buscar ticket o proveedor</label><input name="q" value="{{q}}"></div><div><label>Mes del historial</label><input name="mes" type="month" value="{{month}}"></div><div style="align-self:end"><button>Consultar</button><a class="btn" href="{{url_for('pagos_diarios')}}">Limpiar</a></div></form>
-    <table><tr><th>Fecha</th><th>Ticket</th><th>Proveedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Registrar pago</th></tr>
-    {% for r,d,paid,remaining in rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{r.amount}}</td><td>{{paid}}</td><td>{{remaining}}</td><td>{{'Pagado' if remaining==0 else 'Pendiente' if paid==0 else 'Pago parcial'}}</td><td>{% if remaining>0 %}<form method="post" action="{{url_for('pagar_ticket',rid=r.id)}}"><input name="importe" type="number" min="0.01" step="0.01" value="{{remaining}}" required><select name="medio" required><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select><input name="comprobante" placeholder="N.º comprobante (opcional)"><button {% if not account %}disabled{% endif %}>Marcar pagado / registrar monto</button></form>{% else %}Pagado{% endif %}</td></tr>{% else %}<tr><td colspan="8">Todavía no hay tickets registrados.</td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha del ticket</th><th>Registrado el</th><th>Ticket</th><th>Proveedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Registrar pago</th></tr>
+    {% for r,d,paid,remaining in rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{r.amount}}</td><td>{{paid}}</td><td>{{remaining}}</td><td>{{'Pagado' if remaining==0 else 'Pendiente' if paid==0 else 'Pago parcial'}}</td><td>{% if remaining>0 %}<form method="post" action="{{url_for('pagar_ticket',rid=r.id)}}"><input name="importe" type="number" min="0.01" step="0.01" value="{{remaining}}" required><select name="medio" required><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select><input name="comprobante" placeholder="N.º comprobante (opcional)"><button {% if not account %}disabled{% endif %}>Marcar pagado / registrar monto</button></form>{% else %}Pagado{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay tickets registrados.</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de pagos registrados</h2><table><tr><th>Fecha y hora del pago</th><th>Ticket</th><th>Proveedor</th><th>Medio</th><th>Importe pagado</th><th>Estado</th><th>Comprobante</th></tr>
+    {% for p,d in payment_history %}<tr><td>{{local_time(p.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('medio','')}}</td><td>{{p.amount}}</td><td>{{p.status}}</td><td>{{d.get('comprobante','')}}</td></tr>{% else %}<tr><td colspan="7">No hay pagos registrados para ese mes.</td></tr>{% endfor %}</table></section>
     <section class="card"><h2>Historial de pagos anteriores</h2><table><tr><th>Fecha</th><th>Ticket</th><th>Proveedor</th><th>Total ticket</th><th>Importe pagado</th><th>Saldo según registro</th><th>Estado</th></tr>
     {% for d in legacy_rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{d.get('pagado')}}</td><td>{{[0, (d.get('total','0')|float - d.get('pagado',0)|float)]|max}}</td><td>{{'Pagado' if d.get('total','0')|float <= d.get('pagado',0)|float else 'Historial anterior'}}</td></tr>{% endfor %}</table></section>
-    """,rows=rows,legacy_rows=legacy_rows,q=q,month=month,account=account)
+    """,rows=rows,legacy_rows=legacy_rows,payment_history=payment_history,q=q,month=month,account=account,local_time=local_time)
 
 def pagar_ticket(rid):
     _can_caja()
