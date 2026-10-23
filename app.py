@@ -1142,7 +1142,7 @@ def approvals():
     return render_template_string(BASE+"""
     <section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
     {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
-    {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status=='Autorizado' and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago ejecutado</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
+    {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status in ('Autorizado','Pago parcial') and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Importe a pagar ahora (Gs.)</label><input name="importe" type="number" min="0.01" max="{{r.amount}}" step="0.01" value="{{r.amount}}" required><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago total o parcial</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
 
 @app.post("/autorizaciones/<int:rid>/decidir")
 @login_required
@@ -1168,18 +1168,42 @@ def decide_payment(rid):
 def pay_payment(rid):
     if current_user().role!="admin" and not allowed("tesoreria"): abort(403)
     r=db.get_or_404(Record,rid)
-    if r.module!="solicitudes" or r.status!="Autorizado": abort(400)
-    try: aid=int(request.form.get("account_id",""))
-    except ValueError: abort(400)
+    if r.module!="solicitudes" or r.status not in ("Autorizado","Pago parcial"): abort(400)
+    try:
+        aid=int(request.form.get("account_id",""))
+        paid_now=Decimal(request.form.get("importe",str(r.amount)).replace(",","."))
+    except (ValueError,InvalidOperation): abort(400)
     a=db.get_or_404(CompanyAccount,aid)
     if not a.active: abort(400)
-    if a.balance < r.amount:
+    existing=Record.query.filter_by(module="pagos_cuentas").all()
+    paid_before=sum((Decimal(str(json.loads(p.data or "{}").get("importe","0") or "0")) for p in existing
+        if json.loads(p.data or "{}").get("modulo_origen")=="solicitudes" and str(json.loads(p.data or "{}").get("registro_id"))==str(r.id)),Decimal("0"))
+    balance=max(Decimal("0"),Decimal(str(r.amount))-paid_before)
+    if paid_now<=0 or paid_now>balance:
+        flash("El importe debe ser mayor que cero y no superar el saldo pendiente: Gs. "+str(balance))
+        return redirect(url_for("approvals"))
+    if a.balance < paid_now:
         flash("Saldo insuficiente en la cuenta seleccionada; no se registró el pago.")
         return redirect(url_for("approvals"))
-    a.balance-=r.amount
-    r.status="Pagado"; r.company_account_id=a.id; r.paid_by=current_user().id
-    log_action("pago ejecutado y saldo descontado","solicitudes",r.id,f"Cuenta {a.name}; importe {r.amount}; operador {current_user().username}")
-    db.session.commit(); flash("Pago registrado como ejecutado y saldo descontado una sola vez.")
+    d=json.loads(r.data or "{}")
+    payment_data={"modulo_origen":"solicitudes","registro_id":r.id,"fecha":datetime.now().strftime("%Y-%m-%d"),
+        "beneficiario":d.get("cliente",""),"concepto":d.get("concepto",""),"importe":str(paid_now),
+        "medio":"Transferencia","detalle":"Pago de solicitud; cuenta de empresa: "+a.name,
+        "cuenta_empresa":a.name,"cuenta_cliente":d.get("cuenta_cliente",""),"solicitud_id":r.id}
+    pay=Record(module="pagos_cuentas",title="Pago solicitud #"+str(r.id)+" · "+r.title,
+        data=json.dumps(payment_data,ensure_ascii=False),amount=paid_now,
+        status="Pagado" if paid_before+paid_now>=Decimal(str(r.amount)) else "Pago parcial",
+        company_account_id=a.id,created_by=current_user().id)
+    db.session.add(pay); a.balance-=paid_now
+    r.status="Pagado" if paid_before+paid_now>=Decimal(str(r.amount)) else "Pago parcial"
+    r.company_account_id=a.id; r.paid_by=current_user().id
+    log_action("pago ejecutado y saldo descontado","solicitudes",r.id,
+        f"Cuenta {a.name}; pago {paid_now}; acumulado {paid_before+paid_now}; saldo {max(Decimal('0'),Decimal(str(r.amount))-paid_before-paid_now)}; operador {current_user().username}")
+    log_action("registrar pago de solicitud","pagos_cuentas",pay.id,
+        "Origen: Solicitudes de pago; solicitud #"+str(r.id)+"; cuenta "+a.name+"; importe "+str(paid_now))
+    db.session.commit()
+    remaining=max(Decimal("0"),Decimal(str(r.amount))-paid_before-paid_now)
+    flash("Pago registrado en el Informe de pagos. Saldo pendiente: Gs. "+str(remaining))
     return redirect(url_for("approvals"))
 
 @app.route("/configuracion", methods=["GET", "POST"])
