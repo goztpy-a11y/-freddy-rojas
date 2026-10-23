@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 from flask import request
 from app import app, Material
