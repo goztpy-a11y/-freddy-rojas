@@ -165,6 +165,6 @@ def pagar_ticket(rid):
     return redirect(url_for("pagos_diarios"))
 
 app.add_url_rule("/registrar-ticket", endpoint="registrar_ticket", view_func=registrar_ticket, methods=["GET","POST"])
-app.add_url_rule("/pagos", endpoint="pagos_diarios", view_func=pagos_diarios, methods=["GET"])
+app.add_url_rule("/pagos", endpoint="pagos", view_func=pagos_diarios, methods=["GET"])
 app.add_url_rule("/pagos/<int:rid>/pagar", endpoint="pagar_ticket", view_func=pagar_ticket, methods=["POST"])
 app.view_functions["pagos_diarios"]=pagos_diarios
