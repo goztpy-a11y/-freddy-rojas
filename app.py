@@ -44,7 +44,7 @@ MODULES = {
   ("importe","Importe solicitado","number",True),("cuenta_cliente","Cuenta bancaria del cliente","text",True),
   ("comprobante","Referencia del comprobante / archivo pendiente","text",False),("observaciones","Observaciones","text",False)]),
  "cuentas_empresa": ("Cuentas bancarias de El Toro S.A.", "admin", [
-  ("nombre","Nombre de la cuenta","text",True),("banco","Banco","text",True),("numero","Número / alias de cuenta","text",True),
+  ("nombre","Nombre de la cuenta (opcional)","text",False),("banco","Banco (opcional)","text",False),("numero","Número / alias de cuenta (opcional)","text",False),
   ("moneda","Moneda (PYG / USD)","text",True),("saldo_inicial","Saldo inicial","number",True)]),
  "gastos": ("Gastos", "caja", [
   ("fecha","Fecha del gasto","date",True),("categoria","Categoría","text",True),("detalle","Detalle completo","text",True),
