@@ -87,8 +87,8 @@ def registrar_ticket():
     <template id="material-row"><tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr></template>
     <p><button type="button" id="add-material">Agregar material</button></p><div><label>Total del ticket (Gs.)</label><input id="total" readonly value="0"></div></div>
     <div style="align-self:end"><button>Guardar ticket</button></div></form></section>
-    <script type="application/json" id="pago-vendors">{{vendors|tojson}}</script><script src="{{url_for('static',filename='pagos_diarios.js')}}" defer></script>
-    """,today=today,materials=materials,vendors=vendors)
+    <script type="application/json" id="pago-vendors">{{vendors|tojson}}</script><script type="application/json" id="pago-materials">{{material_data|tojson}}</script><script src="{{url_for('static',filename='registrar_ticket.js')}}" defer></script>
+    """,today=today,materials=materials,vendors=vendors,material_data=[{"id":m.id,"name":m.name} for m in materials])
 
 def pagos_diarios():
     _can_caja()
