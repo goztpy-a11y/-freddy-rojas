@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     lines.slice(2).forEach(line => addLine(String(line.material_id || ""), line.kg || ""));
     recalc(); total.value = fmt(old.total);
-    if (!paid.dataset.touched) paid.value = fmt(old.total);
+    if (!paid.dataset.touched) { paid.value = fmt(old.saldo); paid.dataset.touched = ""; }
   });
   form.addEventListener("submit", e => {
     if (!vendor()) { e.preventDefault(); alert("Seleccioná un cliente/proveedor registrado."); return; }
