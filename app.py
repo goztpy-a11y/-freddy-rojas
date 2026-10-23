@@ -339,6 +339,28 @@ tbody tr:hover td{background:#f5f9fc}
 .status-pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#edf3fb;color:#385c87;font-size:11px;font-weight:750}
 .table-wrap{overflow-x:auto}
 @media(max-width:520px){.dashboard-heading h2{font-size:23px}.dashboard-date{font-size:12px}.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-metrics>.metric-card{padding:13px}.metric-card>strong{font-size:28px}.quick-action-grid{grid-template-columns:1fr}}
+
+/* Refinamiento visual solicitado: panel de gestión empresarial */
+.dashboard-overview{background:linear-gradient(135deg,#ffffff 0%,#f1f7fc 68%,#eaf5f6 100%);border-color:#dce7f2;position:relative;overflow:hidden}
+.dashboard-overview:after{content:"";position:absolute;right:-58px;top:-88px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle,rgba(36,139,161,.10),rgba(36,139,161,0));pointer-events:none}
+.dashboard-heading,.dashboard-metrics{position:relative;z-index:1}
+.dashboard-heading .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;background:#e7f2fa;color:#2864ad;letter-spacing:1.35px}
+.dashboard-heading h2{font-size:clamp(25px,3vw,32px);margin-top:9px}
+.dashboard-metrics>.metric-card{position:relative;border:1px solid #e1e9f2;border-top:0;border-left:4px solid #3978c9;border-radius:12px;box-shadow:0 5px 18px rgba(20,45,75,.045);transition:transform .16s,box-shadow .16s}
+.dashboard-metrics>.metric-card:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(20,45,75,.09)}
+.dashboard-metrics>.metric-card:nth-child(4n+2){border-left-color:#15949a}
+.dashboard-metrics>.metric-card:nth-child(4n+3){border-left-color:#7a68c4}
+.dashboard-metrics>.metric-card:nth-child(4n+4){border-left-color:#d69a36}
+.metric-card>strong{font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.dashboard-actions .section-heading>span{font-size:12px;color:#7a899c}
+.quick-action{border-color:#e0e8f1;box-shadow:0 3px 12px rgba(20,45,75,.025)}
+.quick-action:nth-child(4n+2) .quick-action-icon{background:#e5f6f3;color:#137c78}
+.quick-action:nth-child(4n+3) .quick-action-icon{background:#f0edfc;color:#6854b1}
+.quick-action:nth-child(4n+4) .quick-action-icon{background:#fff3df;color:#a96c16}
+#ultimos-movimientos table th:first-child{border-top-left-radius:8px}
+#ultimos-movimientos table th:last-child{border-top-right-radius:8px}
+.status-pill{white-space:nowrap}
+@media(max-width:520px){.dashboard-overview{padding:16px}.dashboard-heading{align-items:flex-start}.dashboard-heading>div:first-child{min-width:0}.dashboard-heading p{font-size:13px}.dashboard-metrics>.metric-card{min-width:0}.metric-card>span{font-size:11px}.quick-action{padding:12px}}
 </style></head><body><header><div><strong>Freddy Rojas</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">FR</div><div class="brand-copy"><strong>FREDDY ROJAS</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
@@ -507,7 +529,7 @@ def admin_section(section):
       <a class="area-link" href="{{href}}"><span class="area-link-icon">{{loop.index}}</span>
       <span class="area-link-copy"><strong>{{label}}</strong><small>{{description}}</small></span><span class="area-arrow">→</span></a>
       {% endfor %}
-    </section></main><footer>El Toro S.A. · Plataforma de gestión empresarial</footer></body></html>
+    </section></main><footer>Freddy Rojas · Plataforma de gestión empresarial</footer></body></html>
     """, title=data[0], data=data)
 
 
