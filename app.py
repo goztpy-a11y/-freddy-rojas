@@ -499,7 +499,7 @@ footer{display:block!important;color:#8b99aa}
 
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now(), "allowed": allowed, "company_settings": read_system_settings()}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "allowed": allowed, "company_settings": read_system_settings()}
 
 @app.get("/health")
 def health():
@@ -953,7 +953,7 @@ def module_page(module):
         {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{r.created_at.strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
+        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
         payment_module="cobros_cuentas" if module=="cuentas_cobrar" else "pagos_cuentas"
         payment_rows=Record.query.filter(Record.module.in_(["pagos_cuentas","cobros_cuentas"])).order_by(Record.created_at.desc()).all()
@@ -1005,7 +1005,7 @@ def module_page(module):
                     paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
                               if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
                     balance=original.amount-paid
-                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":datetime.now().strftime("%Y-%m-%d"),
+                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":paraguay_now().strftime("%Y-%m-%d"),
                         "beneficiario":d.get("beneficiario",""),"concepto":"Desembolso de cheque "+d.get("numero",""),
                         "numero_cheque":d.get("numero",""),"importe":str(balance),"medio":"Cheque","detalle":"Cheque desembolsado"}
                     central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
@@ -1071,7 +1071,7 @@ def module_page(module):
         {% for r,d,paid,balance in summaries %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
         {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if request.method == "POST":
         data = {key: ("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip() for key,label,kind,req in fields}
         if module == "cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
@@ -1262,7 +1262,7 @@ def pay_payment(rid):
         flash("Saldo insuficiente en la cuenta seleccionada; no se registró el pago.")
         return redirect(url_for("approvals"))
     d=json.loads(r.data or "{}")
-    payment_data={"modulo_origen":"solicitudes","registro_id":r.id,"fecha":datetime.now().strftime("%Y-%m-%d"),
+    payment_data={"modulo_origen":"solicitudes","registro_id":r.id,"fecha":paraguay_now().strftime("%Y-%m-%d"),
         "beneficiario":d.get("cliente",""),"concepto":d.get("concepto",""),"importe":str(paid_now),
         "medio":"Transferencia","detalle":"Pago de solicitud; cuenta de empresa: "+a.name,
         "cuenta_empresa":a.name,"cuenta_cliente":d.get("cuenta_cliente",""),"solicitud_id":r.id}
