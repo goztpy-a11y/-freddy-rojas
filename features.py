@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from flask import request, redirect, url_for, render_template_string, flash, abort
-from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE, paraguay_now
+from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE, paraguay_now, local_time
 
 MODULES.update({
     "pagos_diarios": ("Pagos diarios y por ticket", "caja", []),
@@ -57,10 +57,10 @@ def pagos_diarios():
     today=datetime.now(_ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d")
     if q:
         all_rows=[r for r in all_rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
-    today_rows=[r for r in all_rows if _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))==today]
+    today_rows=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))==today]
     # La vista diaria contiene únicamente la fecha local actual; el historial mensual conserva los demás días.
     # Al cambiar la fecha en Paraguay, los registros anteriores dejan de aparecer en "Pagos de hoy" y quedan en historial.
-    history=[r for r in all_rows if _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))!=today]
+    history=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))!=today]
     total_today=sum((Decimal(str(r.amount or 0)) for r in today_rows),Decimal("0"))
     total_history=sum((Decimal(str(r.amount or 0)) for r in history),Decimal("0"))
     return _page("Pagos diarios", """
@@ -231,7 +231,7 @@ def listado_proveedores():
     items=[(r,_data(r)) for r in _rows("proveedores")]
     from app import Material
     mats=Material.query.order_by(Material.name).all()
-    last={d.get("nombre"):max([x.created_at.strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
+    last={d.get("nombre"):max([local_time(x.created_at).strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
     return _page("Proveedores", """
     <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
     <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
@@ -268,7 +268,7 @@ def editar_proveedor(rid):
                     return redirect(url_for("editar_proveedor",rid=rid))
         d.update({"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices})
         rec.title=str(d.get("codigo",""))+" · "+nombre
-        rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=paraguay_now()
+        rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=datetime.utcnow()
         log_action("editar proveedor y precios","proveedores",rec.id,nombre)
         db.session.commit()
         flash("Proveedor y precios actualizados.")
@@ -288,10 +288,10 @@ def movimiento_proveedor(nombre):
     _can_caja()
     rows=[r for r in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if nombre.casefold() in (r.title+" "+r.data).casefold()]
     month=request.args.get("mes",paraguay_now().strftime("%Y-%m"))
-    rows=[r for r in rows if r.created_at.strftime("%Y-%m")==month]
+    rows=[r for r in rows if local_time(r.created_at).strftime("%Y-%m")==month]
     return _page("Movimiento proveedor", """
     <section class="card"><h2>Movimiento de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
-    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
     """,nombre=nombre,month=month,rows=rows)
 
 @app.route("/planillas",methods=["GET","POST"])
@@ -524,7 +524,7 @@ def auditoria_pagos():
         for r in _rows(mod):
             d=_data(r)
             if q and q not in (r.title+" "+r.data+" "+str(r.amount)).casefold(): continue
-            record_date=str(d.get("fecha") or r.created_at.strftime("%Y-%m-%d"))[:10]
+            record_date=str(d.get("fecha") or local_time(r.created_at).strftime("%Y-%m-%d"))[:10]
             if start and record_date<start: continue
             if end and record_date>end: continue
             rows.append(r)
@@ -533,7 +533,7 @@ def auditoria_pagos():
     rows.sort(key=lambda x:x.created_at,reverse=True)
     return _page("Auditoría de pagos", """
     <section class="card"><h2>Auditoría · Salidas de dinero y pagos</h2><form method="get" class="grid"><div><label>Buscar ticket, proveedor, importe, medio o concepto</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{start}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{end}}"></div><div style="align-self:end"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir auditoría</button></div></form>
-    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Detalle completo</th><th>Estado</th><th>Importe</th><th>Registro</th></tr>{% for r in rows %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Detalle completo</th><th>Estado</th><th>Importe</th><th>Registro</th></tr>{% for r in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
     """,rows=rows,q=q,start=start,end=end)
  
 @app.route("/fletes",methods=["GET","POST"])
