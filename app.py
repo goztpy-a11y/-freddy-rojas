@@ -943,7 +943,7 @@ def module_page(module):
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
         <div><label>Categoría</label><input name="categoria" required></div><div><label>Medio de pago</label><select name="medio"><option value="">Pendiente / no pagado</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
         <div><label>Origen de fondos</label><select name="origen_fondos" required><option value="otro">Otro / efectivo general</option><option value="cuenta_bancaria">Cuenta bancaria</option><option value="caja_chica">Caja chica</option></select></div>
-        <div><label>Cuenta bancaria (si corresponde)</label><select name="account_id"><option value="">Seleccionar cuenta</option>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select></div>
+        <div><label>Cuenta central</label>{% if accounts %}<input value="{{accounts[0].name or 'Cuenta central'}} · {{accounts[0].currency}} · saldo {{accounts[0].balance}}" disabled>{% else %}<input value="No registrada" disabled>{% endif %}</div>
         <div><label>Comprobante</label><input name="comprobante"></div>
         <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
         <div><label>Artículo / descripción</label><input name="item[]" required></div><div><label>Cantidad</label><input name="cantidad_item[]" type="number" min="0.001" step="0.001" required></div><div><label>Precio unitario (Gs.)</label><input name="precio_item[]" type="number" min="0" step="0.01" required></div>
