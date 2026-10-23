@@ -671,7 +671,7 @@ def _professional_reports():
     original_reports=app.view_functions.get("reports")
     original_module_report=app.view_functions.get("report_module")
     def reports_pro():
-        available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key)]
+        available=[(key,("Informe de pagos" if key=="pagos_cuentas" else meta[0])) for key,meta in MODULES.items() if allowed(key) and key!="cobros_cuentas"]
         return render_template_string(BASE+"""
         <section class="card"><h2>Informes por sector</h2><p>Consultá los movimientos y compará los resultados de cada sector.</p>
         <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{color:#111!important;background:#dce6f1;border-color:#b6c7da}.analytics-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:16px 0}.analytics-kpi{padding:15px;border:1px solid #e1e8f0;border-radius:11px;background:#f8fafd}.analytics-kpi span{display:block;font-size:11px;color:#62748a;font-weight:700}.analytics-kpi strong{display:block;font-size:22px;color:#173d67;margin-top:5px}.trend-up{color:#16805d;font-weight:800}.trend-down{color:#b54747;font-weight:800}.trend-flat{color:#64748b;font-weight:800}.analytics-table{margin:12px 0 20px}.analytics-table td,.analytics-table th{white-space:normal}.analytics-note{color:#687b91;font-size:12px;margin:8px 0 14px}@media(max-width:600px){.analytics-kpi{padding:11px}.analytics-kpi strong{font-size:18px}}</style>
@@ -679,6 +679,7 @@ def _professional_reports():
         <p><a class="btn report-open" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informes",available=available)
 
     def report_module_pro(module):
+        if module=="cobros_cuentas": return redirect(url_for("report_module",module="cuentas_cobrar"))
         if module not in MODULES: abort(404)
         if not allowed(module): abort(403)
         q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
@@ -694,20 +695,14 @@ def _professional_reports():
         now,cur_start,prev_start=_analytics_periods()
         cur_end=_period_end(cur_start); prev_end=cur_start
         prev2_start=prev_start
-        label=MODULES[module][0]
+        label="Informe de pagos" if module=="pagos_cuentas" else MODULES[module][0]
         stats_kind=None; stats_rows=[]; kpis=[]
         money_modules={
-            "pagos_diarios":("Pagos efectuados","Pagos diarios y por ticket"),
-            "pagos_cuentas":("Pagos registrados","Movimientos de pagos"),
+            "pagos_cuentas":("Pagos registrados","Informe de pagos"),
             "cobros_cuentas":("Cobros registrados","Cobros de cuentas por cobrar"),
             "caja_chica":("Gastos de caja chica","Caja chica"),
             "gastos":("Gastos registrados","Gastos"),
-            "solicitudes":("Pagos ejecutados","Solicitudes de pago"),
-            "planillas":("Pagos a proveedores","Cuenta de proveedores"),
-            "cuentas_cobrar":("Deuda por cobrar","Cuentas por cobrar"),
-            "cuentas_pagar":("Deuda por pagar","Cuentas por pagar"),
-            "tickets":("Tickets registrados","Tickets de entrada"),
-            "prestamos_pagos":("Pagos de préstamos","Pagos de préstamos")
+            "cuentas_cobrar":("Deuda por cobrar","Cuentas por cobrar")
         }
         def amt(rec,data):
             if module=="caja_chica" and data.get("tipo")!="gasto": return Decimal("0")
@@ -726,6 +721,17 @@ def _professional_reports():
                   {"label":"Total del mes anterior","value":prev_total,"detail":prev_start.strftime("%B %Y").capitalize()},
                   {"label":"Variación","value":("+" if diff>0 else "")+str(diff),"detail":trend,"trend":trend_class},
                   {"label":"Operaciones este mes","value":cur_count,"detail":"Mes anterior: "+str(prev_count)}]
+            stats_kind="money"
+        if module=="ventas":
+            cur=_monthly_records(["ventas"],cur_start,cur_end); prev=_monthly_records(["ventas"],prev_start,cur_start)
+            cur_total=sum((Decimal(str(r.amount or 0)) for r,d in cur),Decimal("0"))
+            prev_total=sum((Decimal(str(r.amount or 0)) for r,d in prev),Decimal("0"))
+            cur_count=len(cur); prev_count=len(prev); diff=cur_total-prev_total
+            trend,trend_class=_delta_label(cur_total,prev_total)
+            kpis=[{"label":"Ventas este mes","value":cur_total,"detail":now.strftime("%B %Y").capitalize()},
+                  {"label":"Ventas mes anterior","value":prev_total,"detail":prev_start.strftime("%B %Y").capitalize()},
+                  {"label":"Variación","value":("+" if diff>0 else "")+str(diff),"detail":trend,"trend":trend_class},
+                  {"label":"Ventas registradas","value":cur_count,"detail":"Mes anterior: "+str(prev_count)}]
             stats_kind="money"
         if module=="materiales":
             materials=_Material.query.order_by(_Material.name).all()
@@ -746,7 +752,7 @@ def _professional_reports():
                 trend,trend_class=_delta_label(cq,pq)
                 stats_rows.append({"name":m.name,"cur_count":cc,"prev_count":pc,"cur_qty":cq,"prev_qty":pq,"trend":trend,"trend_class":trend_class})
             stats_kind="materials"
-        if module in ("proveedores","planillas","tickets"):
+        if module in ("proveedores","tickets"):
             vendors=[]
             if module=="proveedores":
                 vendors=[_data(r).get("nombre","") for r in _rows("proveedores") if _data(r).get("nombre")]
