@@ -626,3 +626,154 @@ def caja_chica():
     <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th></tr>
     {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{'Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto'}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('saldo') if d.get('tipo')=='saldo' else r.amount}}</td></tr>{% endfor %}</table></section>
     """,balance=balance,shown=shown,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+
+
+# Informes profesionales: comparaciones mensuales basadas en registros existentes.
+from zoneinfo import ZoneInfo as _ZoneInfo
+from datetime import date as _date, timedelta as _timedelta
+from sqlalchemy import func as _func
+from app import Material as _Material, User as _User
+
+def _analytics_periods():
+    now=datetime.now(_ZoneInfo("America/Asuncion"))
+    current_start=now.replace(day=1,hour=0,minute=0,second=0,microsecond=0).replace(tzinfo=None)
+    if now.month==1:
+        prev_start=current_start.replace(year=now.year-1,month=12)
+    else:
+        prev_start=current_start.replace(month=now.month-1)
+    return now,current_start,prev_start
+
+def _record_date(rec, data):
+    raw=data.get("fecha")
+    if raw:
+        try: return datetime.strptime(str(raw)[:10], "%Y-%m-%d")
+        except (ValueError,TypeError): pass
+    return rec.created_at
+
+def _monthly_records(modules, start, end):
+    out=[]
+    for mod in modules:
+        for rec in Record.query.filter_by(module=mod).all():
+            data=_data(rec); dt=_record_date(rec,data)
+            if start <= dt < end:
+                out.append((rec,data))
+    return out
+
+def _period_end(start):
+    return start.replace(year=start.year+1,month=1) if start.month==12 else start.replace(month=start.month+1)
+
+def _delta_label(current, previous):
+    if current==previous: return ("Igual","flat")
+    if current>previous: return ("Subió","up")
+    return ("Bajó","down")
+
+def _professional_reports():
+    original_reports=app.view_functions.get("reports")
+    original_module_report=app.view_functions.get("report_module")
+    def reports_pro():
+        available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key)]
+        return render_template_string(BASE+"""
+        <section class="card"><h2>Informes por sector</h2><p>Consultá los movimientos y compará los resultados de cada sector.</p>
+        <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{color:#111!important;background:#dce6f1;border-color:#b6c7da}.analytics-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:16px 0}.analytics-kpi{padding:15px;border:1px solid #e1e8f0;border-radius:11px;background:#f8fafd}.analytics-kpi span{display:block;font-size:11px;color:#62748a;font-weight:700}.analytics-kpi strong{display:block;font-size:22px;color:#173d67;margin-top:5px}.trend-up{color:#16805d;font-weight:800}.trend-down{color:#b54747;font-weight:800}.trend-flat{color:#64748b;font-weight:800}.analytics-table{margin:12px 0 20px}.analytics-table td,.analytics-table th{white-space:normal}.analytics-note{color:#687b91;font-size:12px;margin:8px 0 14px}@media(max-width:600px){.analytics-kpi{padding:11px}.analytics-kpi strong{font-size:18px}}</style>
+        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn report-open" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
+        <p><a class="btn report-open" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informes",available=available)
+
+    def report_module_pro(module):
+        if module not in MODULES: abort(404)
+        if not allowed(module): abort(403)
+        q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+        items=Record.query.filter_by(module=module).order_by(Record.created_at.desc()).all(); results=[]
+        for r in items:
+            d=_data(r); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
+            if q and q not in hay: continue
+            dt=_record_date(r,d).strftime("%Y-%m-%d")
+            if since and dt<since: continue
+            if until and dt>until: continue
+            if amount_filter and amount_filter not in str(r.amount): continue
+            results.append((r,d))
+        now,cur_start,prev_start=_analytics_periods()
+        cur_end=_period_end(cur_start); prev_end=cur_start
+        prev2_start=prev_start
+        label=MODULES[module][0]
+        stats_kind=None; stats_rows=[]; kpis=[]
+        money_modules={
+            "pagos_diarios":("Pagos efectuados","Pagos diarios y por ticket"),
+            "pagos_cuentas":("Pagos registrados","Movimientos de pagos"),
+            "cobros_cuentas":("Cobros registrados","Cobros de cuentas por cobrar"),
+            "caja_chica":("Gastos de caja chica","Caja chica"),
+            "gastos":("Gastos registrados","Gastos"),
+            "solicitudes":("Pagos ejecutados","Solicitudes de pago"),
+            "planillas":("Pagos a proveedores","Cuenta de proveedores"),
+            "cuentas_cobrar":("Deuda por cobrar","Cuentas por cobrar"),
+            "cuentas_pagar":("Deuda por pagar","Cuentas por pagar"),
+            "tickets":("Tickets registrados","Tickets de entrada"),
+            "prestamos_pagos":("Pagos de préstamos","Pagos de préstamos")
+        }
+        def amt(rec,data):
+            if module=="caja_chica" and data.get("tipo")!="gasto": return Decimal("0")
+            if module=="planillas": return Decimal(str(data.get("pago",rec.amount) or 0))
+            if module=="cuentas_cobrar": return Decimal(str(data.get("importe",rec.amount) or 0))
+            if module=="cuentas_pagar": return Decimal(str(data.get("importe",rec.amount) or 0))
+            if module=="solicitudes" and rec.status not in ("Pagado","Pago parcial","Desembolsado"): return Decimal("0")
+            return Decimal(str(rec.amount or 0))
+        if module in money_modules:
+            cur=_monthly_records([module],cur_start,cur_end); prev=_monthly_records([module],prev_start,cur_start)
+            cur_total=sum((amt(r,d) for r,d in cur),Decimal("0")); prev_total=sum((amt(r,d) for r,d in prev),Decimal("0"))
+            cur_count=sum(1 for r,d in cur if amt(r,d)>0); prev_count=sum(1 for r,d in prev if amt(r,d)>0)
+            diff=cur_total-prev_total
+            trend,trend_class=_delta_label(cur_total,prev_total)
+            kpis=[{"label":"Total del mes actual","value":cur_total,"detail":now.strftime("%B %Y").capitalize()},
+                  {"label":"Total del mes anterior","value":prev_total,"detail":prev_start.strftime("%B %Y").capitalize()},
+                  {"label":"Variación","value":("+" if diff>0 else "")+str(diff),"detail":trend,"trend":trend_class},
+                  {"label":"Operaciones este mes","value":cur_count,"detail":"Mes anterior: "+str(prev_count)}]
+            stats_kind="money"
+        if module=="materiales":
+            materials=_Material.query.order_by(_Material.name).all()
+            activity_modules=["tickets","ventas","planillas"]
+            cur=_monthly_records(activity_modules,cur_start,cur_end); prev=_monthly_records(activity_modules,prev_start,cur_start)
+            for m in materials:
+                def measure(records):
+                    count=Decimal("0"); qty=Decimal("0")
+                    for rec,d in records:
+                        mid=str(d.get("material_id",""))
+                        name=str(d.get("material","") or d.get("nombre_material",""))
+                        matches=(name.casefold()==m.name.casefold() or mid==str(m.id))
+                        if not matches: continue
+                        count+=1
+                        qty+=Decimal(str(d.get("cantidad",d.get("kg",0)) or 0))
+                    return count,qty
+                cc,cq=measure(cur); pc,pq=measure(prev)
+                trend,trend_class=_delta_label(cq,pq)
+                stats_rows.append({"name":m.name,"cur_count":cc,"prev_count":pc,"cur_qty":cq,"prev_qty":pq,"trend":trend,"trend_class":trend_class})
+            stats_kind="materials"
+        if module in ("proveedores","planillas","tickets"):
+            vendors=[]
+            if module=="proveedores":
+                vendors=[_data(r).get("nombre","") for r in _rows("proveedores") if _data(r).get("nombre")]
+            else:
+                vendors=[_data(r).get("nombre") or _data(r).get("cliente") or _data(r).get("persona") for r in _rows("proveedores")]
+                vendors=[v for v in vendors if v]
+            if vendors:
+                vendors=sorted(set(vendors),key=lambda x:x.casefold())
+            else:
+                vendors=sorted(set(str(_data(r).get("cliente") or _data(r).get("persona") or _data(r).get("proveedor") or "").strip() for r in _rows("tickets")+_rows("planillas") if (_data(r).get("cliente") or _data(r).get("persona") or _data(r).get("proveedor"))),key=lambda x:x.casefold())
+            cur=_monthly_records(["tickets","planillas"],cur_start,cur_end); prev=_monthly_records(["tickets","planillas"],prev_start,cur_start)
+            for name in vendors:
+                cc=sum(1 for r,d in cur if str(d.get("cliente") or d.get("proveedor") or d.get("persona") or "").casefold()==name.casefold())
+                pc=sum(1 for r,d in prev if str(d.get("cliente") or d.get("proveedor") or d.get("persona") or "").casefold()==name.casefold())
+                trend,trend_class=_delta_label(Decimal(cc),Decimal(pc))
+                stats_rows.append({"name":name,"cur_count":cc,"prev_count":pc,"trend":trend,"trend_class":trend_class})
+            if module=="proveedores": stats_kind="vendors"
+        return render_template_string(BASE+"""
+        <style>.analytics-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:16px 0}.analytics-kpi{padding:15px;border:1px solid #e1e8f0;border-radius:11px;background:#f8fafd}.analytics-kpi span{display:block;font-size:11px;color:#62748a;font-weight:700}.analytics-kpi strong{display:block;font-size:22px;color:#173d67;margin-top:5px}.trend-up{color:#16805d;font-weight:800}.trend-down{color:#b54747;font-weight:800}.trend-flat{color:#64748b;font-weight:800}.analytics-note{color:#687b91;font-size:12px;margin:8px 0 14px}.analytics-table{margin:12px 0 20px}@media(max-width:600px){.analytics-kpi{padding:11px}.analytics-kpi strong{font-size:18px}}</style>
+        <section class="card"><h2>Informe: {{label}}</h2>
+        {% if kpis %}<div class="analytics-kpis">{% for k in kpis %}<div class="analytics-kpi"><span>{{k.label}}</span><strong>{% if 'Total' in k.label or 'Deuda' in k.label or 'Gastos' in k.label or 'Pagos' in k.label or 'Cobros' in k.label or 'Variación' in k.label %}Gs. {% endif %}{{k.value}}</strong>{% if k.trend %}<div class="trend-{{k.trend}}">{{k.detail}}</div>{% else %}<div>{{k.detail}}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
+        {% if stats_kind=='materials' %}<h3>Estadística mensual por material</h3><p class="analytics-note">Comparación de actividad registrada en tickets, ventas y planillas. Se compara la cantidad (kg/unidades) de este mes con el mes anterior.</p><div style="overflow-x:auto"><table class="analytics-table"><tr><th>Material</th><th>Movimientos este mes</th><th>Movimientos mes anterior</th><th>Cantidad este mes</th><th>Cantidad mes anterior</th><th>Comparación</th></tr>{% for s in stats_rows %}<tr><td><b>{{s.name}}</b></td><td>{{s.cur_count}}</td><td>{{s.prev_count}}</td><td>{{s.cur_qty}}</td><td>{{s.prev_qty}}</td><td class="trend-{{s.trend_class}}">{{s.trend}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay materiales registrados.</td></tr>{% endfor %}</table></div>
+        {% elif stats_kind=='vendors' %}<h3>Actividad mensual por proveedor</h3><p class="analytics-note">Cantidad de operaciones de tickets y planillas asociadas a cada proveedor.</p><div style="overflow-x:auto"><table class="analytics-table"><tr><th>Proveedor</th><th>Este mes</th><th>Mes anterior</th><th>Comparación</th></tr>{% for s in stats_rows %}<tr><td><b>{{s.name}}</b></td><td>{{s.cur_count}}</td><td>{{s.prev_count}}</td><td class="trend-{{s.trend_class}}">{{s.trend}}</td></tr>{% else %}<tr><td colspan="4">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div>{% endif %}
+        <form method="get" class="grid"><div><label>Buscar cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div><div style="align-self:end"><button>Buscar</button> <a class="btn report-open" href="{{url_for('report_module',module=module)}}">Limpiar</a></div></form>
+        <p><button type="button" onclick="window.print()">Imprimir informe</button></p><div style="overflow-x:auto"><table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>
+        {% for r,d in results %}<tr><td>{{_record_date(r,d).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% else %}<tr><td colspan="6">No hay registros para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe",label=label,module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results,kpis=kpis,stats_kind=stats_kind,stats_rows=stats_rows,_record_date=_record_date)
+    app.view_functions["reports"]=reports_pro
+    app.view_functions["report_module"]=report_module_pro
+
+_professional_reports()
