@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from flask import request, redirect, url_for, render_template_string, flash, abort
-from app import app, db, Record, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE
+from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE
 
 MODULES.update({
     "pagos_diarios": ("Pagos diarios y por ticket", "caja", []),
@@ -574,6 +574,16 @@ def fletes():
 
 
 # Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
+def _caja_chica_balance(rows=None):
+    rows = rows if rows is not None else _rows("caja_chica")
+    latest_balance=next((r for r in rows if _data(r).get("tipo")=="saldo"),None)
+    if not latest_balance:
+        return Decimal("0")
+    bd=_data(latest_balance)
+    balance=Decimal(str(bd.get("saldo","0")))
+    expenses=[r for r in rows if _data(r).get("tipo")=="gasto" and r.created_at>latest_balance.created_at]
+    return balance-sum((Decimal(str(r.amount or 0)) for r in expenses),Decimal("0"))
+
 @app.route("/caja-chica", methods=["GET", "POST"])
 @login_required
 def caja_chica():
@@ -583,7 +593,25 @@ def caja_chica():
         fecha=request.form.get("fecha", datetime.now().strftime("%Y-%m-%d")).strip()
         medio=request.form.get("medio","").strip()
         try:
-            if action == "saldo":
+            if action == "recarga_banco":
+                amount=Decimal(request.form.get("importe","").strip().replace(",","."))
+                try: account=db.session.get(CompanyAccount,int(request.form.get("account_id","")))
+                except (ValueError,TypeError): account=None
+                if amount<=0 or not fecha or not account or not account.active:
+                    raise InvalidOperation()
+                current_balance=_caja_chica_balance()
+                new_balance=current_balance+amount
+                account.balance-=amount
+                log_action("transferir banco a caja chica","caja_chica",None,
+                    "Cuenta "+account.name+"; importe "+str(amount)+"; saldo caja chica "+str(new_balance))
+                _save("caja_chica","Transferencia bancaria a caja chica · "+account.name,{
+                    "tipo":"saldo","fecha":fecha,"saldo":str(new_balance),
+                    "detalle":"Recarga desde cuenta bancaria "+account.name,
+                    "medio":"Transferencia","clasificacion":"saldo","origen":"transferencia_bancaria",
+                    "importe_transferencia":str(amount),"cuenta_empresa":account.name,"company_account_id":account.id
+                },amount,"Transferencia registrada")
+                flash("Transferencia registrada. Saldo de caja chica: Gs. "+str(new_balance)+"; saldo bancario: Gs. "+str(account.balance))
+            elif action == "saldo":
                 saldo=Decimal(request.form.get("saldo","").strip().replace(",","."))
                 if saldo < 0 or not fecha:
                     raise InvalidOperation()
@@ -609,18 +637,12 @@ def caja_chica():
             flash("Revisá la fecha, la descripción y el monto. El saldo no puede ser negativo y el gasto debe ser mayor que cero.")
         return redirect(url_for("caja_chica"))
     rows=_rows("caja_chica")
-    latest_balance=next((r for r in rows if _data(r).get("tipo")=="saldo"),None)
-    if latest_balance:
-        bd=_data(latest_balance)
-        balance=Decimal(str(bd.get("saldo","0")))
-        expenses=[r for r in rows if _data(r).get("tipo")=="gasto" and r.created_at>latest_balance.created_at]
-        balance-=sum((Decimal(str(r.amount or 0)) for r in expenses),Decimal("0"))
-    else:
-        balance=Decimal("0")
+    balance=_caja_chica_balance(rows)
+    accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all()
     q=request.args.get("q","").strip().casefold()
     # El historial de Caja chica debe mostrar solo gastos; los ajustes de saldo
     # son operaciones administrativas y no representan dinero gastado.
-    shown=[r for r in rows if _data(r).get("tipo")=="gasto" and
+    shown=[r for r in rows if (_data(r).get("tipo")=="gasto" or _data(r).get("origen")=="transferencia_bancaria") and
            (not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold())]
     return _page("Caja chica", """
     <section class="card"><h2>Saldo disponible de caja chica</h2><h3>Gs. {{balance}}</h3>
@@ -629,6 +651,12 @@ def caja_chica():
     <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Detalle del ajuste (opcional)</label><input name="detalle"></div>
     <div style="align-self:end"><button>Guardar monto disponible</button></div></form></section>
+    <section class="card"><h2>Transferir dinero desde una cuenta bancaria</h2><p>La transferencia reduce el saldo del banco y aumenta caja chica; no se contabiliza como gasto.</p><form method="post" class="grid">
+    <input type="hidden" name="accion" value="recarga_banco">
+    <div><label>Cuenta bancaria de origen</label><select name="account_id" required><option value="">Seleccionar cuenta</option>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select></div>
+    <div><label>Importe a transferir (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div style="align-self:end"><button>Registrar transferencia</button></div></form></section>
     <section class="card"><h2>Registrar gasto de caja chica</h2><form method="post" class="grid">
     <input type="hidden" name="accion" value="gasto">
     <div><label>En qué se gastó</label><input name="detalle" required></div>
@@ -639,7 +667,7 @@ def caja_chica():
     <div style="align-self:end"><button>Guardar gasto</button></div></form></section>
     <section class="card"><h2>Historial de movimientos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar descripción o monto"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
     <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th></tr>
-    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{'Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto'}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('saldo') if d.get('tipo')=='saldo' else r.amount}}</td></tr>{% endfor %}</table></section>
+    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td></tr>{% endfor %}</table></section>
     """,balance=balance,shown=shown,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
 
 

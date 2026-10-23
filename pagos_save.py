@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal, InvalidOperation
 from flask import request, redirect, url_for, flash
-from app import app, db, Record, Material, current_user, log_action
+from app import app, db, Record, Material, CompanyAccount, current_user, log_action
 from features import _rows, _data, _can_caja
 
 def crear_pago_diario_materiales():
@@ -55,12 +55,28 @@ def crear_pago_diario_materiales():
         paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
         if amount<=0 or paid+amount>total: raise InvalidOperation()
         balance=(total-paid-amount).quantize(Decimal("0.01"))
+        account=None
+        account_id=request.form.get("account_id","").strip()
+        if medio in ("Transferencia","Cheque") and not account_id:
+            flash("Seleccioná la cuenta bancaria desde la que se realiza la transferencia o el cheque.")
+            return redirect(url_for("pagos_diarios"))
+        if account_id:
+            try: account=db.session.get(CompanyAccount,int(account_id))
+            except (ValueError,TypeError): account=None
+            if not account or not account.active:
+                raise InvalidOperation()
         data={"ticket":ticket,"comprobante":comp,"persona":persona,"materiales":lines,"total":str(total),"fecha":fecha,
-              "medio":medio,"cuenta":request.form.get("cuenta","").strip(),"detalle":request.form.get("detalle","").strip(),
+              "medio":medio,"cuenta":request.form.get("cuenta","").strip(),"cuenta_empresa":account.name if account else "",
+              "company_account_id":account.id if account else None,"detalle":request.form.get("detalle","").strip(),
               "pagado_acumulado":str(paid+amount),"saldo":str(balance)}
         payment=Record(module="pagos_diarios",title="Pago ticket "+ticket,data=json.dumps(data,ensure_ascii=False),
-            amount=amount,status="Pagado" if balance==0 else "Pago parcial",created_by=current_user().id)
-        db.session.add(payment); db.session.flush()
+            amount=amount,status="Pagado" if balance==0 else "Pago parcial",company_account_id=account.id if account else None,created_by=current_user().id)
+        db.session.add(payment)
+        if account: account.balance-=amount
+        db.session.flush()
+        if account:
+            log_action("descontar pago de cuenta bancaria","pagos_diarios",payment.id,
+                "Cuenta "+account.name+"; ticket "+ticket+"; importe descontado "+str(amount)+"; saldo bancario "+str(account.balance))
         log_action("registrar pago diario","pagos_diarios",payment.id,"Ticket "+ticket+"; "+persona+"; pago "+str(amount))
         if not existing:
             for line in lines:

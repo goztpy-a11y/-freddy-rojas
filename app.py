@@ -869,13 +869,40 @@ def module_page(module):
                 data={"fecha":request.form.get("fecha",""),"categoria":request.form.get("categoria","").strip(),
                       "items":items,"detalle":"; ".join(x["articulo"] for x in items),
                       "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip()}
-                if not data["fecha"] or not data["categoria"]: raise InvalidOperation()
-                rec=Record(module="gastos",title=data["categoria"]+" · "+data["detalle"][:150],
-                    data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado" if data["medio"] else "Registrado",
-                    created_by=current_user().id)
+                source=request.form.get("origen_fondos","otro").strip()
+                if not data["fecha"] or not data["categoria"] or source not in ("cuenta_bancaria","caja_chica","otro"): raise InvalidOperation()
+                account=None
+                if source=="cuenta_bancaria":
+                    try: account=db.session.get(CompanyAccount,int(request.form.get("account_id","")))
+                    except (ValueError,TypeError): account=None
+                    if not account or not account.active or not data["medio"]: raise InvalidOperation()
+                    data["cuenta_empresa"]=account.name
+                    data["company_account_id"]=account.id
+                    data["origen_fondos"]=source
+                elif source=="caja_chica":
+                    if data["medio"]!="Efectivo": raise InvalidOperation()
+                    cc_rows=Record.query.filter_by(module="caja_chica").order_by(Record.created_at.desc()).all()
+                    latest_balance=next((r for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="saldo"),None)
+                    available=Decimal(str(json.loads(latest_balance.data or "{}").get("saldo","0"))) if latest_balance else Decimal("0")
+                    if latest_balance:
+                        available-=sum((Decimal(str(r.amount or 0)) for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="gasto" and r.created_at>latest_balance.created_at),Decimal("0"))
+                    if total>available: raise InvalidOperation()
+                    data.update({"tipo":"gasto","importe":str(total),"clasificacion":"gastos","origen_fondos":"caja_chica"})
+                elif data["medio"] in ("Transferencia","Cheque","Tarjeta"):
+                    raise InvalidOperation()
+                if source=="caja_chica":
+                    rec=Record(module="caja_chica",title="Gasto caja chica · "+data["categoria"]+" · "+data["detalle"][:120],
+                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado",created_by=current_user().id)
+                else:
+                    rec=Record(module="gastos",title=data["categoria"]+" · "+data["detalle"][:150],
+                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado" if data["medio"] else "Registrado",
+                        company_account_id=account.id if account else None,created_by=current_user().id)
                 db.session.add(rec); db.session.flush()
-                log_action("registrar gasto y salida de dinero","gastos",rec.id,f"{data['categoria']}; total {total}; medio {data['medio']}")
-                db.session.commit(); flash("Gasto guardado. Total: Gs. "+str(total))
+                if account: account.balance-=total
+                log_action("registrar gasto y salida de dinero",rec.module,rec.id,
+                    f"{data['categoria']}; total {total}; medio {data['medio']}; origen {source}"+("; cuenta "+account.name+"; saldo "+str(account.balance) if account else ""))
+                db.session.commit()
+                flash(("Gasto guardado desde caja chica." if source=="caja_chica" else "Gasto guardado.")+" Total: Gs. "+str(total)+("; saldo bancario actualizado: Gs. "+str(account.balance) if account else ""))
             except (InvalidOperation,ValueError):
                 db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
             return redirect(url_for("module_page",module="gastos"))
@@ -891,6 +918,8 @@ def module_page(module):
         <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
         <div><label>Categoría</label><input name="categoria" required></div><div><label>Medio de pago</label><select name="medio"><option value="">Pendiente / no pagado</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
+        <div><label>Origen de fondos</label><select name="origen_fondos" required><option value="otro">Otro / efectivo general</option><option value="cuenta_bancaria">Cuenta bancaria</option><option value="caja_chica">Caja chica</option></select></div>
+        <div><label>Cuenta bancaria (si corresponde)</label><select name="account_id"><option value="">Seleccionar cuenta</option>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select></div>
         <div><label>Comprobante</label><input name="comprobante"></div>
         <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
         <div><label>Artículo / descripción</label><input name="item[]" required></div><div><label>Cantidad</label><input name="cantidad_item[]" type="number" min="0.001" step="0.001" required></div><div><label>Precio unitario (Gs.)</label><input name="precio_item[]" type="number" min="0" step="0.01" required></div>
@@ -903,7 +932,7 @@ def module_page(module):
         {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{r.created_at.strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
         payment_module="cobros_cuentas" if module=="cuentas_cobrar" else "pagos_cuentas"
         payment_rows=Record.query.filter(Record.module.in_(["pagos_cuentas","cobros_cuentas"])).order_by(Record.created_at.desc()).all()
