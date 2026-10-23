@@ -530,7 +530,7 @@ def index():
     visible_modules = [key for key in MODULES if allowed(key) and key != "cobros_cuentas"]
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
-    records = Record.query.filter(Record.module.in_(visible_modules)).order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
+    records = Record.query.filter(Record.module.in_(visible_modules), Record.module != "caja_chica").order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
     material_count = Material.query.count() if u.role == "admin" or allowed("inventario") else None
