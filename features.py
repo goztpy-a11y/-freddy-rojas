@@ -175,7 +175,7 @@ def prestamos():
     <section class="card"><h2>Préstamos y saldos</h2><button onclick="window.print()" type="button">Imprimir</button><table><tr><th>Entidad / cliente</th><th>Fecha</th><th>Monto</th><th>Pagado</th><th>Saldo</th><th>Plazo</th><th>Estado</th><th>Registrar pago</th></tr>
     {% for r,d,paid,balance in summaries %}<tr><td>{{d.get('entidad')}} / {{d.get('cliente')}}</td><td>{{d.get('fecha')}}</td><td>{{d.get('monto')}}</td><td>{{paid}}</td><td>{{balance}}</td><td>{{d.get('plazo_meses')}} meses</td><td>{{'Pagado' if balance==0 else ('Vencido' if d.get('vencimiento') and d.get('vencimiento')<today else 'Pendiente')}}</td><td>{% if balance>0 %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="prestamo_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" placeholder="Importe" required><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Automático</option><option>Cheque</option></select><input name="cuota" placeholder="N.º cuota"><input name="observaciones" placeholder="Detalle"><button>Registrar pago</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
     <section class="card"><h2>Historial de pagos de préstamos</h2><table><tr><th>Fecha</th><th>Préstamo</th><th>Cliente</th><th>Importe</th><th>Medio</th></tr>{% for p in payments %}{% set d=decode(p) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('entidad','')}} #{{d.get('prestamo_id')}}</td><td>{{d.get('cliente')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td></tr>{% endfor %}</table></section>
-    """,summaries=summaries,payments=payments,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    """,summaries=summaries,payments=payments,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/proveedores",methods=["GET","POST"])
 @login_required
@@ -287,7 +287,7 @@ def editar_proveedor(rid):
 def movimiento_proveedor(nombre):
     _can_caja()
     rows=[r for r in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if nombre.casefold() in (r.title+" "+r.data).casefold()]
-    month=request.args.get("mes",datetime.now().strftime("%Y-%m"))
+    month=request.args.get("mes",paraguay_now().strftime("%Y-%m"))
     rows=[r for r in rows if r.created_at.strftime("%Y-%m")==month]
     return _page("Movimiento proveedor", """
     <section class="card"><h2>Movimiento de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
@@ -332,7 +332,7 @@ def planillas():
     <div><label>Medio de pago</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label>Flete (Gs.)</label><input name="flete" type="number" min="0" step="0.01" value="0"></div>
     <div><label>Salida / retiro</label><input name="salida" placeholder="Detalle de salida"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Guardar planilla</button></div></form></section>
     <section class="card"><h2>Historial de planillas</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Cliente</th><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Mercadería</th><th>Saldo anterior</th><th>Diferencia</th><th>Pago</th><th>Flete</th><th>Saldo actualizado</th><th>Salida</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('cliente')}}</td><td>{% for m in materials %}{% if m.id|string==d.get('material_id') %}{{m.name}}{% endif %}{% endfor %}</td><td>{{d.get('kg')}}</td><td>{{d.get('precio_unitario')}}</td><td>{{d.get('monto_mercaderia')}}</td><td>{{d.get('monto_deuda')}}</td><td>{{d.get('diferencia')}}</td><td>{{d.get('pago')}}</td><td>{{d.get('flete')}}</td><td><b>{{d.get('saldo_final')}}</b></td><td>{{d.get('salida')}}</td></tr>{% endfor %}</table></section>
-    """,rows=rows,materials=materials,vendors=vendors,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    """,rows=rows,materials=materials,vendors=vendors,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/flota",methods=["GET","POST"])
 @login_required
@@ -382,7 +382,7 @@ def flota():
     <div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Kilogramos traídos</label><input type="number" name="kg" min="0" step="0.001" required></div><div><label>Material / carga</label><input name="material"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Registrar retiro</button></div></form></section>
     <section class="card"><h2>Resumen por camión</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Camión</th><th>Kg entregados en ventas</th><th>Kg de retiros registrados</th><th>Combustible cargado (L)</th><th>Gomería (Gs.)</th><th>Registros</th></tr>
     {% for s in truck_summaries %}<tr><td>{{s.nombre}}</td><td>{{s.kg_entregados}}</td><td>{{s.kg_retiros}}</td><td>{{s.litros}}</td><td>{{s.gomeria}}</td><td>{{s.count}}</td></tr>{% endfor %}</table></section>
-    """,equip=equip,moves=moves,fuel=fuel,truck_summaries=truck_summaries,today=datetime.now().strftime("%Y-%m-%d"))
+    """,equip=equip,moves=moves,fuel=fuel,truck_summaries=truck_summaries,today=paraguay_now().strftime("%Y-%m-%d"))
 
 @app.route("/combustible-stock",methods=["GET","POST"])
 @login_required
@@ -407,7 +407,7 @@ def combustible_stock():
     <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for r in equip %}{% set d=decode(r) %}{% if d.get('tipo')=='Camión' %}<option>{{d.get('nombre')}}</option>{% endif %}{% endfor %}</select></div>
     <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" step="0.01" required></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Responsable</label><input name="responsable"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Cargar combustible</button></div></form></section>
     <section class="card"><h2>Historial de stock y cargas</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Litros</th></tr>{% for r in entries %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Entrada</td><td>{{d.get('detalle')}}</td><td>+{{d.get('litros')}}</td></tr>{% endfor %}{% for r in charges %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Carga · {{d.get('camion')}}</td><td>{{d.get('responsable')}} {{d.get('detalle')}}</td><td>-{{d.get('litros')}}</td></tr>{% endfor %}</table></section>
-    """,stock=stock,entries=entries,charges=charges,equip=_rows("flota_equipo"),today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    """,stock=stock,entries=entries,charges=charges,equip=_rows("flota_equipo"),today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.post("/combustible-stock/cargar")
 @login_required
@@ -457,7 +457,7 @@ def mantenimiento():
         if latest_read and latest_read.get("fecha") and daily>0:
             try:
                 last_day=datetime.strptime(latest_read.get("fecha"),"%Y-%m-%d").date()
-                current += daily*Decimal(str(max(0,(datetime.now().date()-last_day).days)))
+                current += daily*Decimal(str(max(0,(paraguay_now().date()-last_day).days)))
             except ValueError: pass
         base=Decimal(str(latest_maint.get("lectura",current) if latest_maint else current))
         interval=Decimal(str(e.get("intervalo",15000)))
@@ -468,7 +468,7 @@ def mantenimiento():
     <section class="card"><h2>Registrar mantenimiento</h2><form method="post" class="grid"><div><label>Camión / maquinaria</label><select name="equipo" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div><div><label>Fecha</label><input type="date" name="fecha" value="{{today}}" required></div><div><label>Lectura actual al mantenimiento (km u horas)</label><input type="number" name="lectura" min="0" step="0.1" required></div><div><label>Tipo de mantenimiento</label><select name="tipo_mantenimiento"><option>Preventivo</option><option>Correctivo</option><option>Inspección</option></select></div><div><label>Trabajo realizado</label><input name="detalle" required></div><div><label>Responsable</label><input name="responsable"></div><div style="align-self:end"><button>Guardar mantenimiento</button></div></form></section>
     <section class="card"><h2>Estado y próximo mantenimiento</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Equipo</th><th>Unidad</th><th>Uso diario estimado</th><th>Intervalo</th><th>Lectura actual</th><th>Uso desde mantenimiento</th><th>Restante</th><th>Estimación de días</th><th>Último mantenimiento</th></tr>{% for s in summaries %}<tr><td>{{s.nombre}} ({{s.tipo}})</td><td>{{s.unidad}}</td><td>{{s.diario}}</td><td>{{s.intervalo}}</td><td>{{s.actual}}</td><td>{{s.usado}}</td><td><b>{{s.restante}} {{s.unidad}}</b></td><td>{{s.dias if s.dias is not none else 'Configurar uso diario'}}</td><td>{{s.ultimo}}</td></tr>{% endfor %}</table></section>
     <section class="card"><h2>Historial de mantenimientos</h2><table><tr><th>Fecha</th><th>Equipo</th><th>Lectura</th><th>Tipo</th><th>Trabajo</th><th>Responsable</th></tr>{% for r in maint %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('equipo')}}</td><td>{{d.get('lectura')}}</td><td>{{d.get('tipo')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('responsable')}}</td></tr>{% endfor %}</table></section>
-    """,equip=equip,summaries=summaries,maint=maint,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    """,equip=equip,summaries=summaries,maint=maint,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/gomeria-camiones",methods=["GET","POST"])
 @login_required
@@ -510,7 +510,7 @@ def gomeria_camiones():
     <section class="card"><h2>Historial de gomería por camión</h2><button type="button" onclick="window.print()">Imprimir</button>
     <table><tr><th>Fecha</th><th>Camión</th><th>Servicio</th><th>Descripción</th><th>Cantidad</th><th>Costo</th><th>Responsable</th><th>Observaciones</th><th>Imprimir</th></tr>
     {% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('cantidad')}}</td><td>{{d.get('costo')}}</td><td>{{d.get('responsable')}}</td><td>{{d.get('observaciones')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-    """,rows=rows,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
+    """,rows=rows,equip=equip,today=paraguay_now().strftime("%Y-%m-%d"))
 
 
 @app.get("/auditoria-pagos")
@@ -570,7 +570,7 @@ def fletes():
     <section class="card"><h2>Historial de fletes</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar chofer, destino, camión"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
     <table><tr><th>Fecha</th><th>Chofer</th><th>Destino</th><th>Camión</th><th>Importe</th><th>Detalle</th><th>Imprimir</th></tr>
     {% for r,d in rows %}<tr><td>{{d.get('fecha')}}</td><td>{{d.get('chofer')}}</td><td>{{d.get('destino')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('detalle')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-    """,rows=rows,q=q,equip=equip,today=datetime.now().strftime("%Y-%m-%d"))
+    """,rows=rows,q=q,equip=equip,today=paraguay_now().strftime("%Y-%m-%d"))
 
 
 # Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
@@ -590,7 +590,7 @@ def caja_chica():
     _can_caja()
     if request.method == "POST":
         action=request.form.get("accion","gasto")
-        fecha=request.form.get("fecha", datetime.now().strftime("%Y-%m-%d")).strip()
+        fecha=request.form.get("fecha", paraguay_now().strftime("%Y-%m-%d")).strip()
         medio=request.form.get("medio","").strip()
         try:
             if action == "recarga_banco":
@@ -668,7 +668,7 @@ def caja_chica():
     <section class="card"><h2>Historial de movimientos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar descripción o monto"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
     <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th></tr>
     {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td></tr>{% endfor %}</table></section>
-    """,balance=balance,shown=shown,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=_data)
+    """,balance=balance,shown=shown,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 
 # Informes profesionales: comparaciones mensuales basadas en registros existentes.
