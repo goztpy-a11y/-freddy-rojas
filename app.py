@@ -473,6 +473,7 @@ footer{display:block!important;color:#8b99aa}
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial</a>{% endif %}
 {% if user.role=='admin' %}
+<a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
 <a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
@@ -483,7 +484,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
-{% if user.role=='admin' %}<a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a><a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
+{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
 </nav></aside>{% endif %}
