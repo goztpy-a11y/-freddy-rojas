@@ -130,6 +130,21 @@ class AuditLog(db.Model):
     detail = db.Column(db.Text, nullable=False, default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
+class SystemSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(80), unique=True, nullable=False)
+    value = db.Column(db.String(300), nullable=False, default="")
+
+def read_system_settings():
+    defaults = {"company_name": "EL TORO S.A.", "company_ruc": "", "company_phone": "", "company_address": ""}
+    try:
+        for item in SystemSetting.query.all():
+            if item.key in defaults:
+                defaults[item.key] = item.value
+    except Exception:
+        db.session.rollback()
+    return defaults
+
 with app.app_context():
     db.create_all()
     from sqlalchemy import inspect
@@ -454,7 +469,7 @@ footer{display:block!important;color:#8b99aa}
 @media print{.sidebar,header,button,.btn,form,nav{display:none!important}footer{display:none!important}}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
-{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>EL TORO S.A.</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
+{% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>{{ company_settings.get('company_name', 'EL TORO S.A.') }}</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial</a>{% endif %}
 {% if user.role=='admin' %}
@@ -468,7 +483,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
-{% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
+{% if user.role=='admin' %}<a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a><a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
 </nav></aside>{% endif %}
@@ -477,7 +492,7 @@ footer{display:block!important;color:#8b99aa}
 
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now(), "allowed": allowed}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now(), "allowed": allowed, "company_settings": read_system_settings()}
 
 @app.get("/health")
 def health():
@@ -1165,6 +1180,63 @@ def pay_payment(rid):
     log_action("pago ejecutado y saldo descontado","solicitudes",r.id,f"Cuenta {a.name}; importe {r.amount}; operador {current_user().username}")
     db.session.commit(); flash("Pago registrado como ejecutado y saldo descontado una sola vez.")
     return redirect(url_for("approvals"))
+
+@app.route("/configuracion", methods=["GET", "POST"])
+@admin_required
+def configuration():
+    settings = read_system_settings()
+    if request.method == "POST":
+        company_name = request.form.get("company_name", "").strip()
+        company_ruc = request.form.get("company_ruc", "").strip()
+        company_phone = request.form.get("company_phone", "").strip()
+        company_address = request.form.get("company_address", "").strip()
+        if not company_name or len(company_name) > 120:
+            flash("El nombre visible de la empresa es obligatorio y no puede superar 120 caracteres.")
+        elif any(len(v) > 180 for v in (company_ruc, company_phone, company_address)):
+            flash("Revisá los datos: uno de los campos supera el límite permitido.")
+        else:
+            values = {"company_name": company_name, "company_ruc": company_ruc,
+                      "company_phone": company_phone, "company_address": company_address}
+            for key, value in values.items():
+                item = SystemSetting.query.filter_by(key=key).first()
+                if item:
+                    item.value = value
+                else:
+                    db.session.add(SystemSetting(key=key, value=value))
+            log_action("actualizar configuración general", "configuracion", None,
+                       "Se actualizaron los datos visibles de la empresa.")
+            db.session.commit()
+            flash("Configuración guardada correctamente.")
+            return redirect(url_for("configuration"))
+        settings = {"company_name": company_name, "company_ruc": company_ruc,
+                    "company_phone": company_phone, "company_address": company_address}
+    return render_template_string(BASE + """
+    <section class="card">
+      <h2>Configuración general</h2>
+      <p>Personalizá los datos visibles de la empresa. Los cambios se guardan en la base de datos y se mantienen al volver a entrar.</p>
+      <form method="post">
+        <div class="grid">
+          <div><label>Nombre visible de la empresa *</label><input name="company_name" maxlength="120" value="{{ settings.get('company_name','EL TORO S.A.') }}" required></div>
+          <div><label>RUC de la empresa</label><input name="company_ruc" maxlength="180" value="{{ settings.get('company_ruc','') }}" placeholder="Ingresar RUC"></div>
+          <div><label>Teléfono de contacto</label><input name="company_phone" maxlength="180" value="{{ settings.get('company_phone','') }}" placeholder="Ingresar teléfono"></div>
+          <div><label>Dirección</label><input name="company_address" maxlength="180" value="{{ settings.get('company_address','') }}" placeholder="Ingresar dirección"></div>
+        </div>
+        <p class="actions"><button type="submit">Guardar configuración</button></p>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Administración y seguridad</h2>
+      <p>Accesos directos a herramientas administrativas existentes.</p>
+      <div class="grid">
+        <article class="card"><h3>Usuarios y permisos</h3><p>Crear, editar o desactivar usuarios y revisar sus áreas asignadas.</p><a class="btn" href="{{ url_for('users') }}">Administrar usuarios</a></article>
+        <article class="card"><h3>Informe de accesos</h3><p>Consultar la actividad registrada en el sistema.</p><a class="btn" href="{{ url_for('access_report') }}">Ver actividad</a></article>
+        <article class="card"><h3>Copias de respaldo</h3><p>Exportar una copia de los datos para guardarla de forma segura.</p><a class="btn" href="{{ url_for('backup_export') }}">Exportar respaldo</a></article>
+        <article class="card"><h3>Contraseña del administrador</h3><p>Acceder a la pantalla para cambiar tu propia contraseña.</p><a class="btn" href="{{ url_for('change_password') }}">Cambiar contraseña</a></article>
+      </div>
+    </section>
+    </main><footer>El Toro S.A.</footer></body></html>
+    """, title="Configuración", settings=settings)
+
 
 @app.route("/usuarios",methods=["GET","POST"])
 @admin_required
