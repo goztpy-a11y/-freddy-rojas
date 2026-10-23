@@ -1172,8 +1172,8 @@ def users():
         password=request.form.get("password","")
         role=request.form.get("role","caja")
         areas=request.form.getlist("areas")
-        if not username or len(password)<10 or role not in AREAS or role=="admin":
-            flash("Usuario requerido, contraseña mínima de 10 caracteres y área válida.")
+        if not username or len(password)<4 or role not in AREAS or role=="admin":
+            flash("Usuario requerido, contraseña mínima de 4 caracteres y área válida.")
         elif User.query.filter_by(username=username).first():
             flash("Ese usuario ya existe.")
         else:
@@ -1184,7 +1184,7 @@ def users():
     items=User.query.order_by(User.username).all()
     return render_template_string(BASE+"""
     <section class="card"><h2>Usuarios y permisos</h2>
-    <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="password" minlength="10" required></div>
+    <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 4 caracteres)</label><input type="password" name="password" minlength="4" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k != 'admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
     <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
 
@@ -1209,8 +1209,8 @@ def edit_user(uid):
             if u.id==current_user().id and not active_value:
                 flash("No podés desactivar tu propia cuenta.")
                 return redirect(url_for("edit_user",uid=u.id))
-            if password and len(password)<10:
-                flash("La nueva contraseña debe tener al menos 10 caracteres.")
+            if password and len(password)<4:
+                flash("La nueva contraseña debe tener al menos 4 caracteres.")
                 return redirect(url_for("edit_user",uid=u.id))
             u.username=username; u.role=role
             areas=[a for a in dict.fromkeys(areas+[role]) if a in AREAS]
@@ -1227,7 +1227,7 @@ def edit_user(uid):
     <form method="post"><label>Nombre de usuario</label><input name="username" value="{{u.username}}" required>
     <label>Rol principal</label><select name="role">{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<option value="{{k}}" {% if u.role==k %}selected{% endif %}>{{v}}</option>{% endif %}{% endfor %}</select>
     <label>Áreas permitidas</label>{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}" {% if k in selected %}checked{% endif %}> {{v}}</label>{% endif %}{% endfor %}
-    <label>Nueva contraseña (opcional; dejar vacío para conservarla)</label><input type="password" name="password" minlength="10">
+    <label>Nueva contraseña (opcional; dejar vacío para conservarla)</label><input type="password" name="password" minlength="4">
     <label><input style="width:auto" type="checkbox" name="active" {% if u.active %}checked{% endif %}> Usuario activo</label>
     <p class="actions"><button class="btn">Guardar cambios</button> <a class="btn" href="{{url_for('users')}}">Cancelar</a></p></form></section></main><footer>El Toro S.A.</footer></body></html>""",title="Editar usuario",u=u,selected=selected)
 
@@ -1277,8 +1277,8 @@ def change_password():
         confirm = request.form.get("confirm_password","")
         if not check_password_hash(u.password_hash, current):
             flash("La contraseña actual no coincide.")
-        elif len(new) < 12:
-            flash("La nueva contraseña debe tener al menos 12 caracteres.")
+        elif len(new) < 4:
+            flash("La nueva contraseña debe tener al menos 4 caracteres.")
         elif new != confirm:
             flash("La confirmación no coincide.")
         else:
@@ -1290,8 +1290,8 @@ def change_password():
     return render_template_string(BASE + """
     <section class="card" style="max-width:520px"><h2>Mi contraseña</h2>
     <form method="post"><label>Contraseña actual</label><input type="password" name="current_password" autocomplete="current-password" required>
-    <label>Nueva contraseña (mínimo 12 caracteres)</label><input type="password" name="new_password" minlength="12" autocomplete="new-password" required>
-    <label>Confirmar nueva contraseña</label><input type="password" name="confirm_password" minlength="12" autocomplete="new-password" required>
+    <label>Nueva contraseña (mínimo 12 caracteres)</label><input type="password" name="new_password" minlength="4" autocomplete="new-password" required>
+    <label>Confirmar nueva contraseña</label><input type="password" name="confirm_password" minlength="4" autocomplete="new-password" required>
     <p><button class="btn">Cambiar contraseña</button></p></form></section>
     </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>
     """, title="Mi contraseña")
