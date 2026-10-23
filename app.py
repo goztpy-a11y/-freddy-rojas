@@ -480,7 +480,7 @@ footer{display:block!important;color:#8b99aa}
 {% else %}
 {% if allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
-{% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a><a href="{{url_for('module_page',module='cobros_cuentas')}}">Cobros de cuentas</a>{% endif %}
+{% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
@@ -675,6 +675,8 @@ def admin_section(section):
 @app.route("/modulo/<module>", methods=["GET","POST"])
 @login_required
 def module_page(module):
+    if module == "cobros_cuentas":
+        return redirect(url_for("module_page", module="cuentas_cobrar"))
     if module not in MODULES: abort(404)
     if not allowed(module):
         flash("Tu usuario no tiene permiso para acceder a este módulo.")
