@@ -20,6 +20,7 @@ MODULES.update({
     "mantenimiento": ("Mantenimiento de camiones y maquinarias", "estacion", []),
     "gomeria_camiones": ("Gomería por camión", "gomeria", []),
     "caja_chica": ("Caja chica", "caja", []),
+    "informe_materiales": ("Informe de materiales", "inventario", []),
 })
 
 def _data(r):
