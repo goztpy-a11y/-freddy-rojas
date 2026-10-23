@@ -1542,7 +1542,7 @@ def print_record(rid):
 def backup_export():
     payload = {
         "app": "El Toro S.A.",
-        "exported_at": paraguay_now().isoformat() + "Z",
+        "exported_at": datetime.utcnow().isoformat() + "Z",
         "warning": "Respaldo manual JSON; almacenar en un lugar privado y seguro.",
         "users": [{"id":u.id,"username":u.username,"role":u.role,"areas":u.areas,"active":u.active,"created_at":u.created_at.isoformat()} for u in User.query.order_by(User.id).all()],
         "materials": [{"id":m.id,"name":m.name,"price":str(m.price),"wholesale_price":str(m.wholesale_price) if m.wholesale_price is not None else None,"unit":m.unit,"stock":str(m.stock),"updated_at":m.updated_at.isoformat() if m.updated_at else None} for m in Material.query.order_by(Material.id).all()],
@@ -1554,7 +1554,7 @@ def backup_export():
     log_action("exportar respaldo manual","backup",None,f"Exportó {len(payload['records'])} registros")
     db.session.commit()
     return send_file(BytesIO(content), mimetype="application/json", as_attachment=True,
-                     download_name="el_toro_sa_respaldo_" + paraguay_now().strftime("%Y%m%d_%H%M%S") + ".json")
+                     download_name="el_toro_sa_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json")
 
 @app.errorhandler(403)
 def forbidden(e):
