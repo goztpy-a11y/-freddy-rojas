@@ -52,7 +52,7 @@ def pagos_diarios():
     _can_caja()
     all_rows=_rows("pagos_diarios")
     q=request.args.get("q","").strip().casefold()
-    month=request.args.get("mes",datetime.now().strftime("%Y-%m"))
+    month=request.args.get("mes",datetime.now(_ZoneInfo("America/Asuncion")).strftime("%Y-%m"))
     today=datetime.now(_ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d")
     if q:
         all_rows=[r for r in all_rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
@@ -724,15 +724,15 @@ def _professional_reports():
             stats_kind="money"
         if module=="ventas":
             cur=_monthly_records(["ventas"],cur_start,cur_end); prev=_monthly_records(["ventas"],prev_start,cur_start)
-            cur_total=sum((Decimal(str(r.amount or 0)) for r,d in cur),Decimal("0"))
-            prev_total=sum((Decimal(str(r.amount or 0)) for r,d in prev),Decimal("0"))
-            cur_count=len(cur); prev_count=len(prev); diff=cur_total-prev_total
-            trend,trend_class=_delta_label(cur_total,prev_total)
-            kpis=[{"label":"Ventas este mes","value":cur_total,"detail":now.strftime("%B %Y").capitalize()},
-                  {"label":"Ventas mes anterior","value":prev_total,"detail":prev_start.strftime("%B %Y").capitalize()},
-                  {"label":"Variación","value":("+" if diff>0 else "")+str(diff),"detail":trend,"trend":trend_class},
+            cur_qty=sum((Decimal(str(d.get("cantidad",0) or 0)) for r,d in cur),Decimal("0"))
+            prev_qty=sum((Decimal(str(d.get("cantidad",0) or 0)) for r,d in prev),Decimal("0"))
+            cur_count=len(cur); prev_count=len(prev); diff=cur_qty-prev_qty
+            trend,trend_class=_delta_label(cur_qty,prev_qty)
+            kpis=[{"label":"Cantidad vendida este mes","value":cur_qty,"detail":"kg / unidades · "+now.strftime("%B %Y").capitalize()},
+                  {"label":"Cantidad vendida mes anterior","value":prev_qty,"detail":prev_start.strftime("%B %Y").capitalize()},
+                  {"label":"Variación de cantidad","value":("+" if diff>0 else "")+str(diff),"detail":trend,"trend":trend_class},
                   {"label":"Ventas registradas","value":cur_count,"detail":"Mes anterior: "+str(prev_count)}]
-            stats_kind="money"
+            stats_kind="sales"
         if module=="materiales":
             materials=_Material.query.order_by(_Material.name).all()
             activity_modules=["tickets","ventas","planillas"]
