@@ -1011,9 +1011,15 @@ def module_page(module):
                     paydata={"modulo_origen":module,"registro_id":rid,"fecha":datetime.now().strftime("%Y-%m-%d"),
                         "beneficiario":d.get("beneficiario",""),"concepto":"Desembolso de cheque "+d.get("numero",""),
                         "numero_cheque":d.get("numero",""),"importe":str(balance),"medio":"Cheque","detalle":"Cheque desembolsado"}
+                    central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                    if not central_account:
+                        flash("Primero registrá la cuenta central en Cuentas bancarias de El Toro S.A."); return redirect(url_for("module_page",module=module))
+                    if balance>Decimal(str(central_account.balance or 0)):
+                        flash("Saldo insuficiente en la cuenta central para desembolsar este cheque."); return redirect(url_for("module_page",module=module))
+                    paydata["company_account_id"]=central_account.id; paydata["cuenta_empresa"]=central_account.name or "Cuenta central"
                     pay=Record(module="pagos_cuentas",title="Desembolso · "+original.title,data=json.dumps(paydata,ensure_ascii=False),
-                        amount=balance,status="Desembolsado",created_by=current_user().id)
-                    db.session.add(pay); original.status="Desembolsado"
+                        amount=balance,status="Desembolsado",company_account_id=central_account.id,created_by=current_user().id)
+                    db.session.add(pay); original.status="Desembolsado"; central_account.balance-=balance
                     db.session.flush(); log_action("desembolsar cheque","cheques",original.id,"Importe "+str(balance))
                     log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title)
                     db.session.commit(); flash("Cheque marcado como desembolsado y registrado en Auditoría.")
