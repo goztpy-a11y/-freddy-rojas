@@ -1043,9 +1043,13 @@ def module_page(module):
                     paydata={"modulo_origen":"cheques","registro_id":rec.id,"fecha":data.get("fecha",""),
                         "beneficiario":data.get("beneficiario",""),"concepto":"Desembolso de cheque "+data.get("numero",""),
                         "numero_cheque":data.get("numero",""),"importe":str(amount),"medio":"Cheque","detalle":"Desembolsado al registrar"}
+                    central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                    if not central_account or amount>Decimal(str(central_account.balance or 0)):
+                        db.session.rollback(); flash("No hay cuenta central o saldo suficiente para desembolsar este cheque."); return redirect(url_for("module_page",module=module))
+                    paydata["company_account_id"]=central_account.id; paydata["cuenta_empresa"]=central_account.name or "Cuenta central"
                     pay=Record(module="pagos_cuentas",title="Desembolso · "+rec.title,data=json.dumps(paydata,ensure_ascii=False),
-                        amount=amount,status="Desembolsado",created_by=current_user().id)
-                    db.session.add(pay); db.session.flush()
+                        amount=amount,status="Desembolsado",company_account_id=central_account.id,created_by=current_user().id)
+                    db.session.add(pay); db.session.flush(); central_account.balance-=amount
                     log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title)
                 db.session.commit(); flash("Registro guardado.")
             except (InvalidOperation,ValueError):
