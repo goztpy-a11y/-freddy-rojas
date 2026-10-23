@@ -44,7 +44,7 @@ def _can_area(area):
     if not (current_user().role=="admin" or allowed(area)): abort(403)
 
 def _page(title, body, **kwargs):
-    return render_template_string(BASE+body+"""</main><footer>El Toro S.A.</footer></body></html>""",title=title,**kwargs)
+    return render_template_string(BASE+body+"""</main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""",title=title,**kwargs)
 
 @app.get("/pagos-diarios")
 @login_required
