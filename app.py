@@ -897,10 +897,10 @@ def module_page(module):
                 if not data["fecha"] or not data["categoria"] or source not in ("cuenta_bancaria","caja_chica","otro"): raise InvalidOperation()
                 account=None
                 if source=="cuenta_bancaria":
-                    try: account=db.session.get(CompanyAccount,int(request.form.get("account_id","")))
-                    except (ValueError,TypeError): account=None
-                    if not account or not account.active or not data["medio"]: raise InvalidOperation()
-                    data["cuenta_empresa"]=account.name
+                    account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                    if not account or not data["medio"]: raise InvalidOperation()
+                    if total>Decimal(str(account.balance or 0)): raise InvalidOperation()
+                    data["cuenta_empresa"]=account.name or "Cuenta central"
                     data["company_account_id"]=account.id
                     data["origen_fondos"]=source
                 elif source=="caja_chica":
