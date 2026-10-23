@@ -27,7 +27,17 @@ def pagos_diarios_materiales():
     tickets={}
     for r in _rows("pagos_diarios"):
         d=_data(r); t=str(d.get("ticket","")).strip()
-        if t and t not in tickets: tickets[t]={"persona":d.get("persona",""),"total":str(d.get("total","0")),"materiales":d.get("materiales",[])}
+        if not t: continue
+        key=t.casefold()
+        if key not in tickets:
+            try: total_ticket=Decimal(str(d.get("total","0") or 0))
+            except Exception: total_ticket=Decimal("0")
+            tickets[key]={"persona":d.get("persona",""),"total":str(total_ticket),"materiales":d.get("materiales",[]),"pagado":Decimal("0"),"saldo":str(total_ticket)}
+        tickets[key]["pagado"] += Decimal(str(r.amount or 0))
+    for ticket_data in tickets.values():
+        saldo=max(Decimal("0"),Decimal(str(ticket_data["total"]))-ticket_data["pagado"]).quantize(Decimal("0.01"))
+        ticket_data["saldo"]=str(saldo)
+        ticket_data["pagado"]=str(ticket_data["pagado"].quantize(Decimal("0.01")))
     return _page("Pagos diarios", """
     <section class="card"><h2>Registrar pago diario por ticket</h2><form method="post" action="{{url_for('crear_pago_diario')}}" id="pago-ticket-form">
     <div class="grid"><div><label>N.º de ticket</label><input name="ticket" id="ticket" required></div><div><label>Cliente / proveedor</label><input name="persona" id="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div></div>
