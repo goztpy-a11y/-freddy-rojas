@@ -10,6 +10,11 @@ from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+
+# Hora local oficial de Paraguay para los nuevos registros.
+def paraguay_now():
+    return datetime.now(ZoneInfo("America/Asuncion")).replace(tzinfo=None)
+
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-only-change-me")
 app.config["ADMIN_CONFIGURED"] = bool(os.environ.get("ADMIN_PASSWORD"))
 db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db")
@@ -86,7 +91,7 @@ class User(db.Model):
     role = db.Column(db.String(30), nullable=False, default="caja")
     areas = db.Column(db.Text, nullable=False, default="caja")
     active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
 
 class Material(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -95,7 +100,7 @@ class Material(db.Model):
     wholesale_price = db.Column(db.Numeric(16, 2), nullable=True)
     unit = db.Column(db.String(30), nullable=False, default="kg")
     stock = db.Column(db.Numeric(16, 3), nullable=False, default=0)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=paraguay_now, onupdate=datetime.utcnow)
 
 class CompanyAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -106,7 +111,7 @@ class CompanyAccount(db.Model):
     opening_balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
 
 class Record(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -119,8 +124,8 @@ class Record(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     approved_by = db.Column(db.Integer, db.ForeignKey("user.id"))
     paid_by = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=paraguay_now, onupdate=datetime.utcnow, nullable=False)
 
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -129,7 +134,7 @@ class AuditLog(db.Model):
     module = db.Column(db.String(40), nullable=False)
     record_id = db.Column(db.Integer)
     detail = db.Column(db.Text, nullable=False, default="")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=paraguay_now, nullable=False)
 
 class SystemSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -479,7 +484,7 @@ footer{display:block!important;color:#8b99aa}
 <a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
-{% if allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
+{% if allowed('caja') %}<a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
@@ -547,7 +552,7 @@ def logout():
 def index():
     u = current_user()
     visible_modules = [key for key in MODULES if allowed(key) and key != "cobros_cuentas"]
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = paraguay_now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
     records = Record.query.filter(Record.module.in_(visible_modules), Record.module != "caja_chica").order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
@@ -557,7 +562,7 @@ def index():
     quick_actions = []
     if u.role == "admin" or allowed("caja"):
         quick_actions += [
-            ("Registrar pago", url_for("pagos_diarios"), "Cargar un pago o movimiento"),
+            ("Registrar ticket", url_for("registrar_ticket"), "Registrar un ticket de entrada"),
             ("Proveedores y precios", url_for("proveedores"), "Consultar y actualizar precios"),
             ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
     if u.role == "admin" or allowed("estacion"):
@@ -890,43 +895,33 @@ def module_page(module):
                     items.append({"articulo":name,"cantidad":str(qty),"precio_unitario":str(price),"subtotal":str(subtotal)})
                     total+=subtotal
                 if not items or total<=0: raise InvalidOperation()
+                concepto=request.form.get("concepto","").strip()
+                detalle_libre=request.form.get("detalle_concepto","").strip()
                 data={"fecha":request.form.get("fecha",""),"categoria":request.form.get("categoria","").strip(),
+                      "concepto":concepto,"detalle_concepto":detalle_libre,
                       "items":items,"detalle":"; ".join(x["articulo"] for x in items),
-                      "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip()}
-                source=request.form.get("origen_fondos","otro").strip()
-                if not data["fecha"] or not data["categoria"] or source not in ("cuenta_bancaria","caja_chica","otro"): raise InvalidOperation()
-                account=None
-                if source=="cuenta_bancaria":
-                    account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
-                    if not account or not data["medio"]: raise InvalidOperation()
-                    if total>Decimal(str(account.balance or 0)): raise InvalidOperation()
-                    data["cuenta_empresa"]=account.name or "Cuenta central"
-                    data["company_account_id"]=account.id
-                    data["origen_fondos"]=source
-                elif source=="caja_chica":
-                    if data["medio"]!="Efectivo": raise InvalidOperation()
-                    cc_rows=Record.query.filter_by(module="caja_chica").order_by(Record.created_at.desc()).all()
-                    latest_balance=next((r for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="saldo"),None)
-                    available=Decimal(str(json.loads(latest_balance.data or "{}").get("saldo","0"))) if latest_balance else Decimal("0")
-                    if latest_balance:
-                        available-=sum((Decimal(str(r.amount or 0)) for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="gasto" and r.created_at>latest_balance.created_at),Decimal("0"))
-                    if total>available: raise InvalidOperation()
-                    data.update({"tipo":"gasto","importe":str(total),"clasificacion":"gastos","origen_fondos":"caja_chica"})
-                elif data["medio"] in ("Transferencia","Cheque","Tarjeta"):
-                    raise InvalidOperation()
-                if source=="caja_chica":
-                    rec=Record(module="caja_chica",title="Gasto caja chica · "+data["categoria"]+" · "+data["detalle"][:120],
-                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado",created_by=current_user().id)
-                else:
-                    rec=Record(module="gastos",title=data["categoria"]+" · "+data["detalle"][:150],
-                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado" if data["medio"] else "Registrado",
-                        company_account_id=account.id if account else None,created_by=current_user().id)
+                      "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip(),
+                      "origen_fondos":"cuenta_bancaria"}
+                if not data["fecha"] or not data["categoria"] or not concepto or not data["medio"]: raise InvalidOperation()
+                account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                if not account:
+                    flash("Primero registrá la cuenta central y su saldo inicial.")
+                    return redirect(url_for("module_page",module="gastos"))
+                if total>Decimal(str(account.balance or 0)):
+                    flash("Saldo insuficiente en la cuenta central; el gasto no se registró.")
+                    return redirect(url_for("module_page",module="gastos"))
+                data["cuenta_empresa"]=account.name or "Cuenta central"
+                data["company_account_id"]=account.id
+                data["detalle"]=("; ".join([concepto,detalle_libre] if detalle_libre else [concepto]))+" · "+data["detalle"]
+                rec=Record(module="gastos",title=concepto+" · "+data["detalle"][:150],
+                    data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado",
+                    company_account_id=account.id,created_by=current_user().id)
                 db.session.add(rec); db.session.flush()
-                if account: account.balance-=total
-                log_action("registrar gasto y salida de dinero",rec.module,rec.id,
-                    f"{data['categoria']}; total {total}; medio {data['medio']}; origen {source}"+("; cuenta "+account.name+"; saldo "+str(account.balance) if account else ""))
+                account.balance-=total
+                log_action("registrar gasto y salida de dinero","gastos",rec.id,
+                    f"{concepto}; categoría {data['categoria']}; total {total}; medio {data['medio']}; cuenta central; saldo {account.balance}")
                 db.session.commit()
-                flash(("Gasto guardado desde caja chica." if source=="caja_chica" else "Gasto guardado.")+" Total: Gs. "+str(total)+("; saldo bancario actualizado: Gs. "+str(account.balance) if account else ""))
+                flash("Gasto guardado. Total: Gs. "+str(total)+"; saldo bancario actualizado: Gs. "+str(account.balance))
             except (InvalidOperation,ValueError):
                 db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
             return redirect(url_for("module_page",module="gastos"))
@@ -941,8 +936,10 @@ def module_page(module):
         return render_template_string(BASE+"""
         <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-        <div><label>Categoría</label><input name="categoria" required></div><div><label>Medio de pago</label><select name="medio"><option value="">Pendiente / no pagado</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
-        <div><label>Origen de fondos</label><select name="origen_fondos" required><option value="otro">Otro / efectivo general</option><option value="cuenta_bancaria">Cuenta bancaria</option><option value="caja_chica">Caja chica</option></select></div>
+        <div><label>Categoría / proveedor</label><input name="categoria" placeholder="Proveedor o categoría general" required></div>
+        <div><label>¿A qué corresponde este gasto?</label><select name="concepto" required><option value="">Seleccionar concepto</option><option>Insumos de gomería</option><option>Viáticos</option><option>Viático para chofer</option><option>Pago por paletear a un chofer</option><option>Donación</option><option>Combustible</option><option>Repuestos</option><option>Mantenimiento</option><option>Otros gastos</option></select></div>
+        <div><label>Detalle del concepto (opcional)</label><input name="detalle_concepto" placeholder="Chofer, motivo, lugar u observación"></div>
+        <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
         <div><label>Cuenta central</label>{% if accounts %}<input value="{{accounts[0].name or 'Cuenta central'}} · {{accounts[0].currency}} · saldo {{accounts[0].balance}}" disabled>{% else %}<input value="No registrada" disabled>{% endif %}</div>
         <div><label>Comprobante</label><input name="comprobante"></div>
         <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
@@ -1158,7 +1155,7 @@ def module_page(module):
                 spare_data["stock"]=str(available+qty)
             if spare_record and movement in ("uso","salida","entrada"):
                 spare_record.data=json.dumps(spare_data,ensure_ascii=False)
-                spare_record.updated_at=datetime.utcnow()
+                spare_record.updated_at=paraguay_now()
                 log_action("actualizar stock de repuesto hidráulico","repuestos",spare_record.id,
                            f"{data.get('repuesto')}: movimiento {movement}, cantidad {qty}")
         db.session.commit(); flash("Registro guardado con usuario y fecha/hora."); return redirect(url_for("module_page",module=module))
@@ -1545,7 +1542,7 @@ def print_record(rid):
 def backup_export():
     payload = {
         "app": "El Toro S.A.",
-        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "exported_at": paraguay_now().isoformat() + "Z",
         "warning": "Respaldo manual JSON; almacenar en un lugar privado y seguro.",
         "users": [{"id":u.id,"username":u.username,"role":u.role,"areas":u.areas,"active":u.active,"created_at":u.created_at.isoformat()} for u in User.query.order_by(User.id).all()],
         "materials": [{"id":m.id,"name":m.name,"price":str(m.price),"wholesale_price":str(m.wholesale_price) if m.wholesale_price is not None else None,"unit":m.unit,"stock":str(m.stock),"updated_at":m.updated_at.isoformat() if m.updated_at else None} for m in Material.query.order_by(Material.id).all()],
@@ -1557,7 +1554,7 @@ def backup_export():
     log_action("exportar respaldo manual","backup",None,f"Exportó {len(payload['records'])} registros")
     db.session.commit()
     return send_file(BytesIO(content), mimetype="application/json", as_attachment=True,
-                     download_name="el_toro_sa_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json")
+                     download_name="el_toro_sa_respaldo_" + paraguay_now().strftime("%Y%m%d_%H%M%S") + ".json")
 
 @app.errorhandler(403)
 def forbidden(e):
