@@ -527,7 +527,7 @@ def logout():
 @login_required
 def index():
     u = current_user()
-    visible_modules = [key for key in MODULES if allowed(key)]
+    visible_modules = [key for key in MODULES if allowed(key) and key != "cobros_cuentas"]
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
     records = Record.query.filter(Record.module.in_(visible_modules)).order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
@@ -639,7 +639,6 @@ def admin_section(section):
         ("Cuentas por cobrar", url_for("module_page",module="cuentas_cobrar"), "Cobros y seguimiento"),
         ("Cheques adelantados", url_for("module_page",module="cheques"), "Cheques y vencimientos"),
         ("Movimientos de pagos", url_for("module_page",module="pagos_cuentas"), "Movimientos de cuentas"),
-        ("Cobros de cuentas", url_for("module_page",module="cobros_cuentas"), "Registrar cobros"),
         ("Autorizaciones y pagos", url_for("approvals"), "Revisar solicitudes"),
         ("Cuentas bancarias de la empresa", url_for("module_page",module="cuentas_empresa"), "Cuentas y saldos")]),
       "auditoria": ("Auditoría", "CONTROL Y TRAZABILIDAD", "Revisión de operaciones y actividad de usuarios.", [
