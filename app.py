@@ -481,7 +481,7 @@ footer{display:block!important;color:#8b99aa}
 {% if user.role=='admin' %}
 <a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
-<a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
+<a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a><a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
 {% if allowed('caja') %}<a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
@@ -1563,6 +1563,7 @@ def forbidden(e):
 import features  # Registra los módulos financieros y de flota de El Toro S.A.
 import pagos_ui  # Sustituye la pantalla antigua por el formulario con materiales
 import pagos_save  # Guarda pagos y registra entradas de inventario
+import caja_tickets  # Separa el registro de tickets del historial de pagos
 import materiales_report  # Informe de entradas y salidas de materiales
 
 if __name__ == "__main__":
