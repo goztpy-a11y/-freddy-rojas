@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from flask import request, redirect, url_for, render_template_string, flash, abort
-from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE
+from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE, paraguay_now
 
 MODULES.update({
     "pagos_diarios": ("Pagos diarios y por ticket", "caja", []),
@@ -268,7 +268,7 @@ def editar_proveedor(rid):
                     return redirect(url_for("editar_proveedor",rid=rid))
         d.update({"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices})
         rec.title=str(d.get("codigo",""))+" · "+nombre
-        rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=datetime.utcnow()
+        rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=paraguay_now()
         log_action("editar proveedor y precios","proveedores",rec.id,nombre)
         db.session.commit()
         flash("Proveedor y precios actualizados.")
