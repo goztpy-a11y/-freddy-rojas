@@ -13,7 +13,7 @@ def pagos_diarios_materiales():
     today=datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d")
     if q: records=[r for r in records if q in (r.title+" "+r.data).casefold()]
     today_rows=[r for r in records if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))==today]
-    history=[r for r in records if _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",r.created_at.strftime("%Y-%m-%d"))!=today]
+    history=[r for r in records if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))!=today]
     mats=Material.query.order_by(Material.name).all()
     accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all()
     vendors=[]
