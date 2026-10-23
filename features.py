@@ -57,10 +57,10 @@ def pagos_diarios():
     today=datetime.now(_ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d")
     if q:
         all_rows=[r for r in all_rows if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
-    today_rows=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))==today]
+    today_rows=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%d/%m/%Y %H:%M"))==today]
     # La vista diaria contiene únicamente la fecha local actual; el historial mensual conserva los demás días.
     # Al cambiar la fecha en Paraguay, los registros anteriores dejan de aparecer en "Pagos de hoy" y quedan en historial.
-    history=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%Y-%m-%d"))!=today]
+    history=[r for r in all_rows if _data(r).get("fecha",local_time(r.created_at).strftime("%d/%m/%Y %H:%M"))[:7]==month and _data(r).get("fecha",local_time(r.created_at).strftime("%d/%m/%Y %H:%M"))!=today]
     total_today=sum((Decimal(str(r.amount or 0)) for r in today_rows),Decimal("0"))
     total_history=sum((Decimal(str(r.amount or 0)) for r in history),Decimal("0"))
     return _page("Pagos diarios", """
@@ -231,7 +231,7 @@ def listado_proveedores():
     items=[(r,_data(r)) for r in _rows("proveedores")]
     from app import Material
     mats=Material.query.order_by(Material.name).all()
-    last={d.get("nombre"):max([local_time(x.created_at).strftime("%d/%m/%Y") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
+    last={d.get("nombre"):max([local_time(x.created_at).strftime("%d/%m/%Y %H:%M") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
     return _page("Proveedores", """
     <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
     <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
@@ -291,7 +291,7 @@ def movimiento_proveedor(nombre):
     rows=[r for r in rows if local_time(r.created_at).strftime("%Y-%m")==month]
     return _page("Movimiento proveedor", """
     <section class="card"><h2>Movimiento de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
-    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
     """,nombre=nombre,month=month,rows=rows)
 
 @app.route("/planillas",methods=["GET","POST"])
@@ -524,7 +524,7 @@ def auditoria_pagos():
         for r in _rows(mod):
             d=_data(r)
             if q and q not in (r.title+" "+r.data+" "+str(r.amount)).casefold(): continue
-            record_date=str(d.get("fecha") or local_time(r.created_at).strftime("%Y-%m-%d"))[:10]
+            record_date=str(d.get("fecha") or local_time(r.created_at).strftime("%d/%m/%Y %H:%M"))[:10]
             if start and record_date<start: continue
             if end and record_date>end: continue
             rows.append(r)
