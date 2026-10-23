@@ -730,16 +730,21 @@ def module_page(module):
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
-                bal = Decimal(request.form.get("saldo_inicial","0") or "0")
+                if CompanyAccount.query.count() >= 1:
+                    flash("Ya existe la cuenta central. No se pueden crear cuentas adicionales.")
+                    return redirect(url_for("module_page",module=module))
+                currency=request.form.get("moneda","").strip().upper()
+                if currency not in ("PYG","USD"): raise InvalidOperation()
+                bal = Decimal(request.form.get("saldo_inicial","").strip().replace(",", "."))
                 if bal < 0: raise InvalidOperation()
-                a = CompanyAccount(name=request.form["nombre"].strip(),bank=request.form["banco"].strip(),
-                    number=request.form["numero"].strip(),currency=request.form["moneda"].strip().upper(),
+                a = CompanyAccount(name=request.form.get("nombre","").strip(),bank=request.form.get("banco","").strip(),
+                    number=request.form.get("numero","").strip(),currency=currency,
                     opening_balance=bal,balance=bal)
-                db.session.add(a); db.session.flush(); log_action("crear cuenta empresa","cuentas_empresa",a.id,a.name); db.session.commit()
-                flash("Cuenta de empresa creada."); return redirect(url_for("module_page",module=module))
+                db.session.add(a); db.session.flush(); log_action("crear cuenta empresa","cuentas_empresa",a.id,a.name or "Cuenta central"); db.session.commit()
+                flash("Cuenta central creada."); return redirect(url_for("module_page",module=module))
             except (InvalidOperation,ValueError,KeyError):
-                db.session.rollback(); flash("Datos de cuenta o saldo inválidos.")
-        items=CompanyAccount.query.order_by(CompanyAccount.id.desc()).all()
+                db.session.rollback(); flash("Ingresá PYG o USD y un saldo inicial válido no negativo.")
+        items=CompanyAccount.query.order_by(CompanyAccount.id.asc()).all()
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><p class="warn">Solo el administrador administra las cuentas y los saldos de El Toro S.A. La cuenta del cliente se guarda por separado en su ticket/solicitud.</p>
         <form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label><input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}></div>{% endfor %}<div style="align-self:end"><button class="btn">Crear cuenta</button></div></form></section>
