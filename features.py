@@ -602,8 +602,6 @@ def caja_chica():
                     "tipo":"gasto","fecha":fecha,"detalle":detalle,"importe":str(importe),
                     "medio":medio,"clasificacion":clasificacion
                 },importe,"Registrado")
-                log_action("registrar gasto de caja chica","caja_chica",None,
-                           f"{detalle}; importe {importe}; clasificación {clasificacion}; medio {medio}")
                 flash("Movimiento de caja chica guardado.")
         except (InvalidOperation,ValueError):
             db.session.rollback()
@@ -715,10 +713,7 @@ def _professional_reports():
         stats_kind=None; stats_rows=[]; kpis=[]
         money_modules={
             "pagos_cuentas":("Pagos registrados","Informe de pagos"),
-            "cobros_cuentas":("Cobros registrados","Cobros de cuentas por cobrar"),
-            "caja_chica":("Gastos de caja chica","Caja chica"),
-            "gastos":("Gastos registrados","Gastos"),
-            "cuentas_cobrar":("Deuda por cobrar","Cuentas por cobrar")
+            "gastos":("Gastos registrados","Gastos")
         }
         def amt(rec,data):
             if module=="caja_chica" and data.get("tipo")!="gasto": return Decimal("0")
