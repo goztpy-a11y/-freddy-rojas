@@ -1,5 +1,6 @@
 import os, json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 from io import BytesIO
@@ -535,11 +536,13 @@ def index():
             ("Usuarios", url_for("users"), "Administrar accesos y permisos")]
     elif allowed("auditoria"):
         quick_actions.append(("Auditoría de pagos", url_for("auditoria_pagos"), "Revisar operaciones"))
+    paraguay_hour = datetime.now(ZoneInfo("America/Asuncion")).hour
+    greeting = "Buenas noches" if paraguay_hour >= 19 or paraguay_hour < 5 else ("Buenos días" if paraguay_hour < 12 else "Buenas tardes")
     return render_template_string(BASE + """
     <section class="fr-welcome">
       <div class="fr-welcome-copy">
         <span class="fr-kicker">FREDDY ROJAS / CENTRO DE OPERACIONES</span>
-        <h1>Buen día, {{user.username}}.</h1>
+        <h1>{{greeting}}, {{user.username}}.</h1>
         <p>Este es el resumen de tu operación. Elegí un área para continuar trabajando.</p>
         <div class="fr-welcome-meta"><span class="fr-live-dot"></span> Sistema de gestión <span class="fr-meta-separator">•</span> {{now.strftime('%A %d de %B de %Y')}}</div>
       </div>
@@ -581,7 +584,7 @@ def index():
       </aside>
     </div>
     {% if user.role=='admin' %}<section class="fr-section-block fr-activity-block" id="ultimos-movimientos"><div class="fr-section-title"><div><span class="fr-kicker">TRAZABILIDAD</span><h2>Actividad reciente</h2></div><a class="fr-view-all" href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Área</th><th>Registro</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="fr-empty-state"><span>▤</span><strong>Sin movimientos recientes</strong><p>Cuando se registren operaciones, aparecerán en esta sección.</p></div>{% endif %}</section>{% endif %}
-    </main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""" , title="Panel principal", pending=pending, accounts=accounts, records=records, today_count=today_count, material_count=material_count, active_users=active_users, quick_actions=quick_actions)
+    </main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""" , title="Panel principal", pending=pending, accounts=accounts, records=records, today_count=today_count, material_count=material_count, active_users=active_users, quick_actions=quick_actions, greeting=greeting)
 
 @app.get("/area/<section>")
 @login_required
@@ -687,8 +690,7 @@ def module_page(module):
         <div><label>Nombre del material</label><input name="nombre" required></div>
         <div style="align-self:end"><button class="btn">Guardar material</button></div></form></section>
         <section class="card"><h2>Listado de materiales</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
-        <table><tr><th>Material</th><th>Precio minorista</th><th>Precio mayorista</th><th>Actualizar precios</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td>{{m.price if m.price and m.price != 0 else '—'}}</td><td>{{m.wholesale_price if m.wholesale_price is not none else '—'}}</td>
-        <td><form method="post" action="{{url_for('update_material_price',mid=m.id)}}" class="actions"><input aria-label="Precio minorista" name="precio_minorista" type="number" step="0.01" min="0" placeholder="Minorista"><input aria-label="Precio mayorista" name="precio_mayorista" type="number" step="0.01" min="0" placeholder="Mayorista"><button class="btn">Guardar</button></form></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items)
+        <table><tr><th>Material</th></tr>{% for m in items %}<tr><td>{{m.name}}</td></tr>{% else %}<tr><td>Todavía no hay materiales registrados.</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items)
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
