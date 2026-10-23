@@ -1,12 +1,13 @@
 import os
 import unittest
+from decimal import Decimal
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "test-only-password-long-enough")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-only")
 
-from app import app, db, User, Material
+from app import app, db, User, Material, CompanyAccount
 from werkzeug.security import generate_password_hash
 
 
@@ -38,7 +39,7 @@ class SmokeTests(unittest.TestCase):
             "/modulo/gastos", "/modulo/ventas", "/modulo/cuentas_pagar",
             "/modulo/cuentas_cobrar", "/modulo/cheques", "/modulo/combustible",
             "/modulo/gomeria", "/modulo/repuestos", "/modulo/movimientos_stock",
-            "/modulo/auditoria", "/pagos-diarios", "/prestamos", "/proveedores",
+            "/modulo/auditoria", "/registrar-ticket", "/pagos", "/pagos-diarios", "/prestamos", "/proveedores",
             "/planillas", "/fletes", "/flota", "/combustible-stock",
             "/mantenimiento", "/gomeria-camiones", "/auditoria-pagos",
         ]
@@ -80,9 +81,15 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(original.status, "En proceso")
 
     def test_expense_with_multiple_items(self):
+        with app.app_context():
+            account = CompanyAccount(name="", bank="", number="", currency="PYG",
+                                     opening_balance=Decimal("100000"), balance=Decimal("100000"))
+            db.session.add(account)
+            db.session.commit()
         response = self.client.post("/modulo/gastos", data={
-            "fecha": "2026-10-22", "categoria": "Herramientas", "medio": "Efectivo",
-            "comprobante": "G-001", "item[]": ["Guantes", "Llave"], 
+            "fecha": "2026-10-22", "categoria": "Herramientas", "concepto": "Otros gastos",
+            "detalle_concepto": "Prueba", "medio": "Efectivo",
+            "comprobante": "G-001", "item[]": ["Guantes", "Llave"],
             "cantidad_item[]": ["2", "1"], "precio_item[]": ["15000", "25000"]
         })
         self.assertEqual(response.status_code, 302)
@@ -91,6 +98,8 @@ class SmokeTests(unittest.TestCase):
             rec = Record.query.filter_by(module="gastos").first()
             self.assertIsNotNone(rec)
             self.assertEqual(str(rec.amount), "55000.00")
+            account = CompanyAccount.query.first()
+            self.assertEqual(str(account.balance), "45000.00")
 
 
 if __name__ == "__main__":

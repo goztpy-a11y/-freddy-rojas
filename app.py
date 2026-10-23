@@ -10,6 +10,18 @@ from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+
+# Hora local oficial de Paraguay para los nuevos registros.
+def paraguay_now():
+    return datetime.now(ZoneInfo("America/Asuncion")).replace(tzinfo=None)
+
+def local_time(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value=value.replace(tzinfo=ZoneInfo("UTC"))
+    return value.astimezone(ZoneInfo("America/Asuncion")).replace(tzinfo=None)
+
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-only-change-me")
 app.config["ADMIN_CONFIGURED"] = bool(os.environ.get("ADMIN_PASSWORD"))
 db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db")
@@ -476,15 +488,15 @@ footer{display:block!important;color:#8b99aa}
 {% if user.role=='admin' %}
 <a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
-<a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a>
+<a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a><a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
-{% if allowed('caja') %}<a href="{{url_for('pagos_diarios')}}">Pagos diarios</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
+{% if allowed('caja') %}<a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
-{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
+{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
@@ -494,7 +506,7 @@ footer{display:block!important;color:#8b99aa}
 
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": datetime.now(), "allowed": allowed, "company_settings": read_system_settings()}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "local_time": local_time, "allowed": allowed, "company_settings": read_system_settings()}
 
 @app.get("/health")
 def health():
@@ -547,7 +559,7 @@ def logout():
 def index():
     u = current_user()
     visible_modules = [key for key in MODULES if allowed(key) and key != "cobros_cuentas"]
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = paraguay_now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
     records = Record.query.filter(Record.module.in_(visible_modules), Record.module != "caja_chica").order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
@@ -557,7 +569,7 @@ def index():
     quick_actions = []
     if u.role == "admin" or allowed("caja"):
         quick_actions += [
-            ("Registrar pago", url_for("pagos_diarios"), "Cargar un pago o movimiento"),
+            ("Registrar ticket", url_for("registrar_ticket"), "Registrar un ticket de entrada"),
             ("Proveedores y precios", url_for("proveedores"), "Consultar y actualizar precios"),
             ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
     if u.role == "admin" or allowed("estacion"):
@@ -618,7 +630,7 @@ def index():
         <section class="fr-rail-card"><span class="fr-kicker">ACCESO DIRECTO</span><h3>¿Necesitás consultar algo?</h3><p>Ingresá al historial general para revisar los registros guardados.</p><a class="fr-rail-link" href="{{url_for('general_history')}}">Abrir historial <b>→</b></a><div class="fr-rail-divider"></div><p>También podés consultar e imprimir los informes disponibles.</p><a class="fr-rail-link" href="{{url_for('reports')}}">Ver informes <b>→</b></a></section>
       </aside>
     </div>
-    {% if user.role=='admin' %}<section class="fr-section-block fr-activity-block" id="ultimos-movimientos"><div class="fr-section-title"><div><span class="fr-kicker">TRAZABILIDAD</span><h2>Actividad reciente</h2></div><a class="fr-view-all" href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Área</th><th>Registro</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{% for r in records %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="fr-empty-state"><span>▤</span><strong>Sin movimientos recientes</strong><p>Cuando se registren operaciones, aparecerán en esta sección.</p></div>{% endif %}</section>{% endif %}
+    {% if user.role=='admin' %}<section class="fr-section-block fr-activity-block" id="ultimos-movimientos"><div class="fr-section-title"><div><span class="fr-kicker">TRAZABILIDAD</span><h2>Actividad reciente</h2></div><a class="fr-view-all" href="{{url_for('general_history')}}">Ver historial completo →</a></div>{% if records %}<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Área</th><th>Registro</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{% for r in records %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td><span class="status-pill">{{r.status}}</span></td><td>{{r.amount}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="fr-empty-state"><span>▤</span><strong>Sin movimientos recientes</strong><p>Cuando se registren operaciones, aparecerán en esta sección.</p></div>{% endif %}</section>{% endif %}
     </main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""" , title="Panel principal", pending=pending, accounts=accounts, records=records, today_count=today_count, material_count=material_count, active_users=active_users, quick_actions=quick_actions, greeting=greeting)
 
 @app.get("/area/<section>")
@@ -775,7 +787,7 @@ def module_page(module):
         <section class="card inventory-list"><h2>Materiales disponibles</h2><button class="btn" type="button" onclick="window.print()">Imprimir inventario</button>
         <table><tr><th>Material</th><th>Cantidad disponible</th><th>Unidad</th></tr>{% for m in items %}<tr><td>{{m.name}}</td><td class="inventory-qty">{{m.stock}}</td><td>{{m.unit}}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Historial de inventario</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
-        <table><tr><th>Fecha/hora</th><th>Material</th><th>Cantidad agregada</th><th>Disponible</th><th>Imprimir</th></tr>{% for r,d in hist_parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{d.get('cantidad_ingresada','')}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed)
+        <table><tr><th>Fecha/hora</th><th>Material</th><th>Cantidad agregada</th><th>Disponible</th><th>Imprimir</th></tr>{% for r,d in hist_parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{d.get('cantidad_ingresada','')}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed)
     if module == "tickets":
         materials=Material.query.order_by(Material.name).all()
         if request.method=="POST":
@@ -808,7 +820,7 @@ def module_page(module):
         <h3>Materiales del ticket</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><button class="btn">Guardar ticket</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>function addTicketLine(){const root=document.getElementById('ticket-lines');const first=root.querySelector('.ticket-line');const copy=first.cloneNode(true);copy.querySelector('select').value='';copy.querySelector('input').value='';copy.querySelector('select').required=false;copy.querySelector('input').required=false;root.appendChild(copy)}</script>
         </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q)
     if module == "auditoria" and request.method == "GET":
@@ -819,8 +831,8 @@ def module_page(module):
             if rec.module not in modules_allowed and rec.module not in {"pagos_diarios","prestamos_pagos","pagos_cuentas","combustible_camion","gomeria_camiones","fletes","planillas","flota","mantenimiento","gastos"}: continue
             d=json.loads(rec.data or "{}"); hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
             if q and q not in hay: continue
-            if since and rec.created_at.strftime("%Y-%m-%d")<since: continue
-            if until and rec.created_at.strftime("%Y-%m-%d")>until: continue
+            if since and local_time(rec.created_at).strftime("%Y-%m-%d")<since: continue
+            if until and local_time(rec.created_at).strftime("%Y-%m-%d")>until: continue
             if amount_filter and amount_filter not in str(rec.amount): continue
             results.append((rec,d))
         logs=AuditLog.query.order_by(AuditLog.created_at.desc()).all()
@@ -831,8 +843,8 @@ def module_page(module):
         <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
         <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module='auditoria')}}">Limpiar</a></div></form>
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
-        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{x.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
+        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{local_time(x.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
     if module == "repuestos":
         if request.method=="POST":
             name=request.form.get("nombre","").strip()
@@ -874,7 +886,7 @@ def module_page(module):
         <div style="align-self:end"><button>Guardar / agregar stock</button></div></form></section>
         <section class="card inventory-list"><h2>Artículos y stock disponible</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo o código"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir inventario</button></form>
         <table><tr><th>Artículo</th><th>Código</th><th>Disponible</th><th>Stock mínimo</th><th>Ubicación</th></tr>{% for r,d in current_items %}<tr><td>{{d.get('nombre')}}</td><td>{{d.get('codigo')}}</td><td class="inventory-qty">{{d.get('stock')}}</td><td>{{d.get('stock_minimo')}}</td><td>{{d.get('ubicacion')}}</td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Historial de entradas</h2><table><tr><th>Fecha/hora</th><th>Artículo</th><th>Cantidad agregada</th><th>Stock tras registro</th><th>Imprimir</th></tr>{% for r,d in history %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cantidad_ingresada',d.get('stock'))}}</td><td>{{d.get('stock')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
+        <section class="card"><h2>Historial de entradas</h2><table><tr><th>Fecha/hora</th><th>Artículo</th><th>Cantidad agregada</th><th>Stock tras registro</th><th>Imprimir</th></tr>{% for r,d in history %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cantidad_ingresada',d.get('stock'))}}</td><td>{{d.get('stock')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,current_items=current_items,history=history,q=q)
     if module == "gastos":
         if request.method == "POST":
@@ -890,43 +902,33 @@ def module_page(module):
                     items.append({"articulo":name,"cantidad":str(qty),"precio_unitario":str(price),"subtotal":str(subtotal)})
                     total+=subtotal
                 if not items or total<=0: raise InvalidOperation()
+                concepto=request.form.get("concepto","").strip()
+                detalle_libre=request.form.get("detalle_concepto","").strip()
                 data={"fecha":request.form.get("fecha",""),"categoria":request.form.get("categoria","").strip(),
+                      "concepto":concepto,"detalle_concepto":detalle_libre,
                       "items":items,"detalle":"; ".join(x["articulo"] for x in items),
-                      "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip()}
-                source=request.form.get("origen_fondos","otro").strip()
-                if not data["fecha"] or not data["categoria"] or source not in ("cuenta_bancaria","caja_chica","otro"): raise InvalidOperation()
-                account=None
-                if source=="cuenta_bancaria":
-                    account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
-                    if not account or not data["medio"]: raise InvalidOperation()
-                    if total>Decimal(str(account.balance or 0)): raise InvalidOperation()
-                    data["cuenta_empresa"]=account.name or "Cuenta central"
-                    data["company_account_id"]=account.id
-                    data["origen_fondos"]=source
-                elif source=="caja_chica":
-                    if data["medio"]!="Efectivo": raise InvalidOperation()
-                    cc_rows=Record.query.filter_by(module="caja_chica").order_by(Record.created_at.desc()).all()
-                    latest_balance=next((r for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="saldo"),None)
-                    available=Decimal(str(json.loads(latest_balance.data or "{}").get("saldo","0"))) if latest_balance else Decimal("0")
-                    if latest_balance:
-                        available-=sum((Decimal(str(r.amount or 0)) for r in cc_rows if json.loads(r.data or "{}").get("tipo")=="gasto" and r.created_at>latest_balance.created_at),Decimal("0"))
-                    if total>available: raise InvalidOperation()
-                    data.update({"tipo":"gasto","importe":str(total),"clasificacion":"gastos","origen_fondos":"caja_chica"})
-                elif data["medio"] in ("Transferencia","Cheque","Tarjeta"):
-                    raise InvalidOperation()
-                if source=="caja_chica":
-                    rec=Record(module="caja_chica",title="Gasto caja chica · "+data["categoria"]+" · "+data["detalle"][:120],
-                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado",created_by=current_user().id)
-                else:
-                    rec=Record(module="gastos",title=data["categoria"]+" · "+data["detalle"][:150],
-                        data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado" if data["medio"] else "Registrado",
-                        company_account_id=account.id if account else None,created_by=current_user().id)
+                      "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip(),
+                      "origen_fondos":"cuenta_bancaria"}
+                if not data["fecha"] or not data["categoria"] or not concepto or not data["medio"]: raise InvalidOperation()
+                account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                if not account:
+                    flash("Primero registrá la cuenta central y su saldo inicial.")
+                    return redirect(url_for("module_page",module="gastos"))
+                if total>Decimal(str(account.balance or 0)):
+                    flash("Saldo insuficiente en la cuenta central; el gasto no se registró.")
+                    return redirect(url_for("module_page",module="gastos"))
+                data["cuenta_empresa"]=account.name or "Cuenta central"
+                data["company_account_id"]=account.id
+                data["detalle"]=("; ".join([concepto,detalle_libre] if detalle_libre else [concepto]))+" · "+data["detalle"]
+                rec=Record(module="gastos",title=concepto+" · "+data["detalle"][:150],
+                    data=json.dumps(data,ensure_ascii=False),amount=total,status="Pagado",
+                    company_account_id=account.id,created_by=current_user().id)
                 db.session.add(rec); db.session.flush()
-                if account: account.balance-=total
-                log_action("registrar gasto y salida de dinero",rec.module,rec.id,
-                    f"{data['categoria']}; total {total}; medio {data['medio']}; origen {source}"+("; cuenta "+account.name+"; saldo "+str(account.balance) if account else ""))
+                account.balance-=total
+                log_action("registrar gasto y salida de dinero","gastos",rec.id,
+                    f"{concepto}; categoría {data['categoria']}; total {total}; medio {data['medio']}; cuenta central; saldo {account.balance}")
                 db.session.commit()
-                flash(("Gasto guardado desde caja chica." if source=="caja_chica" else "Gasto guardado.")+" Total: Gs. "+str(total)+("; saldo bancario actualizado: Gs. "+str(account.balance) if account else ""))
+                flash("Gasto guardado. Total: Gs. "+str(total)+"; saldo bancario actualizado: Gs. "+str(account.balance))
             except (InvalidOperation,ValueError):
                 db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
             return redirect(url_for("module_page",module="gastos"))
@@ -941,8 +943,10 @@ def module_page(module):
         return render_template_string(BASE+"""
         <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-        <div><label>Categoría</label><input name="categoria" required></div><div><label>Medio de pago</label><select name="medio"><option value="">Pendiente / no pagado</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
-        <div><label>Origen de fondos</label><select name="origen_fondos" required><option value="otro">Otro / efectivo general</option><option value="cuenta_bancaria">Cuenta bancaria</option><option value="caja_chica">Caja chica</option></select></div>
+        <div><label>Categoría / proveedor</label><input name="categoria" placeholder="Proveedor o categoría general" required></div>
+        <div><label>¿A qué corresponde este gasto?</label><select name="concepto" required><option value="">Seleccionar concepto</option><option>Insumos de gomería</option><option>Viáticos</option><option>Viático para chofer</option><option>Pago por paletear a un chofer</option><option>Donación</option><option>Combustible</option><option>Repuestos</option><option>Mantenimiento</option><option>Otros gastos</option></select></div>
+        <div><label>Detalle del concepto (opcional)</label><input name="detalle_concepto" placeholder="Chofer, motivo, lugar u observación"></div>
+        <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
         <div><label>Cuenta central</label>{% if accounts %}<input value="{{accounts[0].name or 'Cuenta central'}} · {{accounts[0].currency}} · saldo {{accounts[0].balance}}" disabled>{% else %}<input value="No registrada" disabled>{% endif %}</div>
         <div><label>Comprobante</label><input name="comprobante"></div>
         <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
@@ -953,10 +957,10 @@ def module_page(module):
         <section class="card"><h2>Resumen de gastos · Total: Gs. {{total_gastos}}</h2><p>Incluye los gastos registrados aquí y los tickets clasificados como Gastos. Los tickets clasificados como Pago de materiales y los movimientos de caja chica marcados solo como Caja chica no se suman.</p></section>
         <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
         <table><tr><th>Fecha</th><th>Origen</th><th>Categoría / proveedor</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Imprimir</th></tr>
-        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
-        {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{r.created_at.strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Gasto</td><td>{{d.get('concepto','Otros gastos')}} · {{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%Y-%m-%d')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
+        """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
     if module in ("cuentas_pagar","cuentas_cobrar","cheques"):
         payment_module="cobros_cuentas" if module=="cuentas_cobrar" else "pagos_cuentas"
         payment_rows=Record.query.filter(Record.module.in_(["pagos_cuentas","cobros_cuentas"])).order_by(Record.created_at.desc()).all()
@@ -1008,7 +1012,7 @@ def module_page(module):
                     paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
                               if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
                     balance=original.amount-paid
-                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":datetime.now().strftime("%Y-%m-%d"),
+                    paydata={"modulo_origen":module,"registro_id":rid,"fecha":paraguay_now().strftime("%Y-%m-%d"),
                         "beneficiario":d.get("beneficiario",""),"concepto":"Desembolso de cheque "+d.get("numero",""),
                         "numero_cheque":d.get("numero",""),"importe":str(balance),"medio":"Cheque","detalle":"Cheque desembolsado"}
                     central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
@@ -1071,10 +1075,10 @@ def module_page(module):
         <div style="align-self:end"><button>Guardar registro</button></div></form></section>
         <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
         <table><tr><th>Fecha</th><th>Registro</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
-        {% for r,d,paid,balance in summaries %}<tr><td>{{r.created_at.strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
+        {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
         {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=datetime.now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if request.method == "POST":
         data = {key: ("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip() for key,label,kind,req in fields}
         if module == "cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
@@ -1158,7 +1162,7 @@ def module_page(module):
                 spare_data["stock"]=str(available+qty)
             if spare_record and movement in ("uso","salida","entrada"):
                 spare_record.data=json.dumps(spare_data,ensure_ascii=False)
-                spare_record.updated_at=datetime.utcnow()
+                spare_record.updated_at=paraguay_now()
                 log_action("actualizar stock de repuesto hidráulico","repuestos",spare_record.id,
                            f"{data.get('repuesto')}: movimiento {movement}, cantidad {qty}")
         db.session.commit(); flash("Registro guardado con usuario y fecha/hora."); return redirect(url_for("module_page",module=module))
@@ -1168,8 +1172,8 @@ def module_page(module):
     for r in items:
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         parsed.append((r,d))
     return render_template_string(BASE+"""
@@ -1185,7 +1189,7 @@ def module_page(module):
     {% if module=='tickets' %}<p class="muted small">El precio se toma del material vigente si coincide su nombre. Revisá el total antes de solicitar el pago.</p>{% endif %}
     </section><section class="card"><h2>Historial completo</h2><form method="get" class="grid"><div><label>Buscar en cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Filtrar por monto</label><input name="monto" value="{{amount_filter}}"></div><div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module=module)}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
     {% if parsed %}<table><tr><th>Fecha/hora</th><th>Registro</th><th>Detalle</th><th>Estado</th><th>Importe</th><th>Imprimir</th></tr>
-    {% for r,d in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
+    {% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
 
 
 @app.post("/materiales/<int:mid>/precio")
@@ -1220,7 +1224,7 @@ def approvals():
         parsed.append((r,d,max(Decimal("0"),Decimal(str(r.amount))-paid)))
     return render_template_string(BASE+"""
     <section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
-    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
+    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
     {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status in ('Autorizado','Pago parcial') and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Importe a pagar ahora (Gs.)</label><input name="importe" type="number" min="0.01" max="{{remaining}}" step="0.01" value="{{remaining}}" required><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago total o parcial</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
 
 @app.post("/autorizaciones/<int:rid>/decidir")
@@ -1265,7 +1269,7 @@ def pay_payment(rid):
         flash("Saldo insuficiente en la cuenta seleccionada; no se registró el pago.")
         return redirect(url_for("approvals"))
     d=json.loads(r.data or "{}")
-    payment_data={"modulo_origen":"solicitudes","registro_id":r.id,"fecha":datetime.now().strftime("%Y-%m-%d"),
+    payment_data={"modulo_origen":"solicitudes","registro_id":r.id,"fecha":paraguay_now().strftime("%Y-%m-%d"),
         "beneficiario":d.get("cliente",""),"concepto":d.get("concepto",""),"importe":str(paid_now),
         "medio":"Transferencia","detalle":"Pago de solicitud; cuenta de empresa: "+a.name,
         "cuenta_empresa":a.name,"cuenta_cliente":d.get("cuenta_cliente",""),"solicitud_id":r.id}
@@ -1364,7 +1368,7 @@ def users():
     <section class="card"><h2>Usuarios y permisos</h2>
     <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 4 caracteres)</label><input type="password" name="password" minlength="4" required></div>
     <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k != 'admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
-    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{u.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{local_time(u.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
 
 
 @app.route("/usuarios/<int:uid>/editar",methods=["GET","POST"])
@@ -1438,7 +1442,7 @@ def access_report():
     return render_template_string(BASE + """
     <section class="card"><h2>Informe de accesos</h2><p>Últimos 500 ingresos y cierres de sesión registrados.</p>
     <div style="overflow-x:auto"><table><tr><th>Fecha y hora (UTC)</th><th>Usuario</th><th>Evento</th></tr>
-    {% for entry, username in rows %}<tr><td>{{entry.created_at.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{username or 'Usuario eliminado'}}</td><td>{{entry.action}}</td></tr>{% else %}<tr><td colspan="3">Todavía no hay accesos registrados.</td></tr>{% endfor %}
+    {% for entry, username in rows %}<tr><td>{{local_time(entry.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{username or 'Usuario eliminado'}}</td><td>{{entry.action}}</td></tr>{% else %}<tr><td colspan="3">Todavía no hay accesos registrados.</td></tr>{% endfor %}
     </table></div></section></main><footer>El Toro S.A. · Registro de accesos</footer></body></html>
     """, title="Informe de accesos", rows=rows)
 
@@ -1493,8 +1497,8 @@ def report_module(module):
     for r in items:
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         results.append((r,d))
     return render_template_string(BASE+"""
@@ -1503,7 +1507,7 @@ def report_module(module):
     <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('report_module',module=module)}}">Limpiar</a></div></form>
     <p><button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
     <table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>
-    {% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe "+label if False else "Informe",label=MODULES[module][0],module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results)
+    {% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{k}}:</b> {{v}}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe "+label if False else "Informe",label=MODULES[module][0],module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results)
 
 @app.get("/historial")
 @login_required
@@ -1516,8 +1520,8 @@ def general_history():
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.module+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
         if sector and r.module!=sector: continue
         if q and q not in hay: continue
-        if since and r.created_at.strftime("%Y-%m-%d")<since: continue
-        if until and r.created_at.strftime("%Y-%m-%d")>until: continue
+        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
+        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         results.append((r,d))
     sectors=[(k,MODULES[k][0]) for k in available]
@@ -1526,7 +1530,7 @@ def general_history():
     <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for k,v in sectors %}<option value="{{k}}" {% if sector==k %}selected{% endif %}>{{v}}</option>{% endfor %}</select></div>
     <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
     <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('general_history')}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
-    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{r.created_at.strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
 
 @app.get("/imprimir/<int:rid>")
 @login_required
@@ -1536,7 +1540,7 @@ def print_record(rid):
     data=json.loads(rec.data or "{}")
     return render_template_string(BASE+"""
     <section class="card"><h2>{{MODULES.get(rec.module,(rec.module,))[0]}}</h2><h3>{{rec.title}}</h3>
-    <p><b>Fecha:</b> {{rec.created_at.strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
+    <p><b>Fecha:</b> {{local_time(rec.created_at).strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
     <table><tr><th>Dato</th><th>Información</th></tr>{% for k,v in data.items() %}{% if v is mapping %}<tr><td>{{k}}</td><td>{% for a,b in v.items() %}{{a}}: {{b}}<br>{% endfor %}</td></tr>{% elif v is sequence and v is not string %}<tr><td>{{k}}</td><td>{% for line in v %}{% if line is mapping %}{% for a,b in line.items() %}<b>{{a}}:</b> {{b}} &nbsp; {% endfor %}<br>{% else %}{{line}}<br>{% endif %}{% endfor %}</td></tr>{% else %}<tr><td>{{k}}</td><td>{{v}}</td></tr>{% endif %}{% endfor %}<tr><th>Monto total</th><th>{{rec.amount}}</th></tr></table>
     <p><button class="btn" onclick="window.print()">Imprimir</button> <a class="btn" href="{{url_for('module_page',module=rec.module)}}">Volver al sector</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Imprimir",rec=rec,data=data)
 
@@ -1566,6 +1570,7 @@ def forbidden(e):
 import features  # Registra los módulos financieros y de flota de El Toro S.A.
 import pagos_ui  # Sustituye la pantalla antigua por el formulario con materiales
 import pagos_save  # Guarda pagos y registra entradas de inventario
+import caja_tickets  # Separa el registro de tickets del historial de pagos
 import materiales_report  # Informe de entradas y salidas de materiales
 
 if __name__ == "__main__":
