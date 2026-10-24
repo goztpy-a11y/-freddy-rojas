@@ -694,12 +694,10 @@ def admin_section(section):
         ("Movimientos de pagos", url_for("module_page",module="pagos_cuentas"), "Movimientos de cuentas"),
         ("Autorizaciones y pagos", url_for("approvals"), "Revisar solicitudes"),
         ("Cuentas bancarias de la empresa", url_for("module_page",module="cuentas_empresa"), "Cuentas y saldos")]),
-      "auditoria": ("Auditoría", "CONTROL Y TRAZABILIDAD", "Revisión de operaciones y actividad de usuarios.", [
-        ("Auditoría de pagos", url_for("auditoria_pagos"), "Revisar pagos y comprobantes"),
-        ("Revisión y auditoría", url_for("module_page",module="auditoria"), "Registrar controles y diferencias"),
-        ("Informe de accesos", url_for("access_report"), "Quién ingresó y cuándo"),
-        ("Informes", url_for("reports"), "Informes del sistema"),
-        ("Historial", url_for("general_history"), "Historial general")]),
+      "auditoria": ("Auditoría", "CONTROL Y TRAZABILIDAD", "Informes financieros, seguimiento de proveedores e historial.", [
+        ("Informes", url_for("auditoria_informes"), "Pagos de mercadería, gastos y caja chica"),
+        ("Movimientos de proveedores", url_for("auditoria_movimientos_proveedores"), "Última visita y movimientos por proveedor"),
+        ("Historial", url_for("general_history"), "Historial general de registros")]),
       "administracion": ("Administración", "CONFIGURACIÓN DEL SISTEMA", "Usuarios, permisos y herramientas administrativas.", [
         ("Usuarios y permisos", url_for("users"), "Crear usuarios y asignar áreas"),
         ("Materiales y precios", url_for("module_page",module="materiales"), "Administrar catálogo"),
@@ -1615,6 +1613,42 @@ def change_password():
     </main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>
     """, title="Mi contraseña")
 
+@app.get("/auditoria/informes")
+@login_required
+def auditoria_informes():
+    if current_user().role!="admin" and not allowed("auditoria"):
+        abort(403)
+    q=request.args.get("q","").strip().casefold()
+    since=request.args.get("desde","")
+    until=request.args.get("hasta","")
+    financial_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets"}
+    rows=[]
+    for rec in Record.query.filter(Record.module.in_(financial_modules)).order_by(Record.created_at.desc()).all():
+        data={}
+        try: data=json.loads(rec.data or "{}")
+        except Exception: pass
+        if rec.module=="caja_chica" and data.get("tipo")!="gasto":
+            continue
+        dt=local_time(rec.created_at)
+        hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
+        if q and q not in hay: continue
+        if since and dt.strftime("%Y-%m-%d")<since: continue
+        if until and dt.strftime("%Y-%m-%d")>until: continue
+        label=MODULES.get(rec.module,(rec.module,))[0]
+        concept=(data.get("detalle") or data.get("concepto") or data.get("persona") or data.get("proveedor") or data.get("cliente") or rec.title or label)
+        rows.append({"rec":rec,"data":data,"label":label,"concept":str(concept),"when":dt})
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Informes de movimientos económicos</h2>
+    <form method="get" class="grid"><div><label>Buscar</label><input name="q" value="{{q}}" placeholder="Proveedor, concepto, monto..."></div>
+    <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
+    <div style="align-self:end"><button>Buscar</button> <a class="btn" href="{{url_for('auditoria_informes')}}">Limpiar</a></div></form>
+    <p><button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
+    <div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Tipo</th><th>Movimiento</th><th>Monto (Gs.)</th><th>Detalle</th></tr>
+    {% for row in rows %}<tr><td>{{row.when.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{row.label}}</td><td>{{row.concept}}</td><td>{{row.rec.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=row.rec.id)}}">Ver detalle</a></td></tr>
+    {% else %}<tr><td colspan="5">No hay movimientos para los filtros seleccionados.</td></tr>{% endfor %}</table></div>
+    </section></main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>""",
+    title="Informes de movimientos económicos",rows=rows,q=q,since=since,until=until)
+
 @app.get("/informes")
 @login_required
 def reports():
@@ -1651,6 +1685,8 @@ def report_module(module):
 @login_required
 def general_history():
     available=[key for key in MODULES if allowed(key)]
+    if current_user().role=="auditoria":
+        available=list(dict.fromkeys(list(MODULES.keys())+["tickets_entrada","solicitudes","cheques","cuentas_pagar","cuentas_cobrar"]))
     q=request.args.get("q","").strip().casefold(); sector=request.args.get("sector",""); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
     items=Record.query.order_by(Record.created_at.desc()).all(); results=[]
     for r in items:
