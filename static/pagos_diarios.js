@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!paid.dataset.touched) { paid.value = fmt(old.saldo); paid.dataset.touched = ""; }
   });
   form.addEventListener("submit", e => {
-    if (!vendor()) { e.preventDefault(); alert("Seleccioná un cliente/proveedor registrado."); return; }
+    if (!vendor() && !tickets[ticket.value.trim().toLowerCase()]) { e.preventDefault(); alert("Seleccioná un cliente/proveedor registrado o elegí una carga por su N.º de ticket."); return; }
     if (!tickets[ticket.value.trim().toLowerCase()]) {
       let valid = 0, invalid = false;
       rows.querySelectorAll("tr").forEach(row => {
