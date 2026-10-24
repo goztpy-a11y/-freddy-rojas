@@ -859,8 +859,27 @@ def module_page(module):
                 flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
             data={"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
-            db.session.add(rec); db.session.flush(); log_action("crear ticket de entrada","tickets",rec.id,f"{client}; total {total}"); db.session.commit()
-            flash("Carga guardada."); return redirect(url_for("module_page",module=module))
+            db.session.add(rec); db.session.flush()
+            # Cada carga registrada en Caja aumenta automáticamente el inventario por material.
+            for line in lines:
+                mat=Material.query.filter(db.func.lower(Material.name)==line["material"].strip().lower()).first()
+                if not mat:
+                    continue
+                qty=Decimal(str(line["cantidad"]))
+                mat.stock=Decimal(str(mat.stock or 0))+qty
+                movement={"material":mat.name,"material_id":mat.id,"tipo_movimiento":"entrada",
+                          "origen":"ticket_entrada","cantidad":str(qty),
+                          "ticket_id":rec.id,"cliente":client,"cantidad_disponible":str(mat.stock)}
+                inv=Record(module="inventario",title="Entrada por Caja · "+mat.name,
+                           data=json.dumps(movement,ensure_ascii=False),amount=0,status="Entrada desde Caja",
+                           created_by=current_user().id)
+                db.session.add(inv)
+                log_action("entrada de material desde Caja","inventario",rec.id,
+                           "Ticket #"+str(rec.id)+"; "+client+"; "+mat.name+": +"+str(qty)+" kg; stock "+str(mat.stock))
+            log_action("crear ticket de entrada","tickets",rec.id,f"{client}; total {total}")
+            db.session.commit()
+            flash("Carga guardada y stock de materiales actualizado automáticamente.")
+            return redirect(url_for("module_page",module=module))
         q=request.args.get("q","").strip().casefold(); hist=Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all()
         parsed=[(r,json.loads(r.data or "{}")) for r in hist if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
         return render_template_string(BASE+"""
