@@ -574,9 +574,7 @@ def index():
             ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
     if u.role == "admin" or allowed("estacion"):
         quick_actions += [
-            ("Camiones y retiros", url_for("flota"), "Consultar flota y retiros"),
-            ("Combustible", url_for("combustible_stock"), "Ver existencias y cargas"),
-            ("Mantenimiento", url_for("mantenimiento"), "Registrar servicios de flota")]
+            ("Stock e historial de combustible", url_for("combustible_stock"), "Registrar cargas y consultar historial")]
     if u.role == "admin":
         quick_actions += [
             ("Informes", url_for("reports"), "Consultar e imprimir informes"),
@@ -623,7 +621,7 @@ def index():
           <div class="fr-section-title"><div><span class="fr-kicker">ORGANIZACIÓN</span><h2>Áreas de trabajo</h2></div><span class="fr-section-note">Seleccioná un área para ver sus herramientas</span></div>
           <div class="fr-area-grid">
             <a class="fr-area-card" href="{{url_for('admin_section',section='caja')}}"><span class="fr-area-symbol fr-icon-blue">▣</span><span class="fr-area-copy"><strong>Caja</strong><small>Pagos, proveedores y gastos</small></span><span class="fr-area-arrow">↗</span></a>
-            <a class="fr-area-card" href="{{url_for('admin_section',section='estacion')}}"><span class="fr-area-symbol fr-icon-amber">▤</span><span class="fr-area-copy"><strong>Estación y flota</strong><small>Camiones, combustible y retiros</small></span><span class="fr-area-arrow">↗</span></a>
+            <a class="fr-area-card" href="{{url_for('admin_section',section='estacion')}}"><span class="fr-area-symbol fr-icon-amber">⛽</span><span class="fr-area-copy"><strong>Estación de servicio</strong><small>Stock e historial de cargas por camión o maquinaria</small></span><span class="fr-area-arrow">↗</span></a>
             <a class="fr-area-card" href="{{url_for('admin_section',section='inventario')}}"><span class="fr-area-symbol fr-icon-teal">▦</span><span class="fr-area-copy"><strong>Inventario</strong><small>Materiales, stock y movimientos</small></span><span class="fr-area-arrow">↗</span></a>
             <a class="fr-area-card" href="{{url_for('admin_section',section='tesoreria')}}"><span class="fr-area-symbol fr-icon-violet">◇</span><span class="fr-area-copy"><strong>Tesorería</strong><small>Cuentas, pagos y cobros</small></span><span class="fr-area-arrow">↗</span></a>
             <a class="fr-area-card" href="{{url_for('admin_section',section='gomeria')}}"><span class="fr-area-symbol fr-icon-amber">⚙</span><span class="fr-area-copy"><strong>Gomería</strong><small>Servicios y control por camión</small></span><span class="fr-area-arrow">↗</span></a>
