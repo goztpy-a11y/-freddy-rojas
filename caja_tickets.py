@@ -92,19 +92,32 @@ def registrar_ticket():
 
 def pagos_diarios():
     _can_caja()
-    records=Record.query.filter_by(module="tickets_entrada").order_by(Record.created_at.desc()).all()
+    # Mostrar cargas creadas tanto por Registrar ticket como por el formulario anterior Registrar carga.
+    records=(Record.query.filter(Record.module.in_(["tickets_entrada","tickets"]))
+             .order_by(Record.created_at.desc()).all())
     q=request.args.get("q","").strip().casefold()
     month=request.args.get("mes",datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m"))
     if q: records=[r for r in records if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
     payments=Record.query.filter_by(module="pagos_diarios").order_by(Record.created_at.desc()).all()
-    paid_by_ticket={}
-    for p in payments:
-        d=_data(p); tid=str(d.get("ticket_entrada_id",""))
-        if tid: paid_by_ticket[tid]=paid_by_ticket.get(tid,Decimal("0"))+Decimal(str(p.amount or 0))
     rows=[]
     for r in records:
-        d=_data(r); paid=paid_by_ticket.get(str(r.id),Decimal("0")); remaining=max(Decimal("0"),Decimal(str(r.amount))-paid)
-        rows.append((r,d,paid,remaining))
+        d=_data(r)
+        ticket_number=str(d.get("ticket") or d.get("numero_ticket") or d.get("nro_ticket") or ("CARGA-"+str(r.id))).strip()
+        paid=Decimal("0")
+        # Cada pago se suma una sola vez, aunque tenga tanto ID de origen como número de ticket.
+        for p in payments:
+            pd=_data(p)
+            linked=(str(pd.get("ticket_entrada_id",""))==str(r.id) or
+                    str(pd.get("ticket_origen_id",""))==str(r.id) or
+                    str(pd.get("ticket","")).strip().casefold()==ticket_number.casefold())
+            if linked:
+                paid+=Decimal(str(pd.get("importe",p.amount or 0) or p.amount or 0))
+        d["_display_ticket"]=ticket_number
+        d["_display_persona"]=str(d.get("persona") or d.get("cliente") or "")
+        d["_display_fecha"]=str(d.get("fecha") or local_time(r.created_at).strftime("%Y-%m-%d"))
+        total=Decimal(str(r.amount or d.get("total","0") or 0))
+        remaining=max(Decimal("0"),total-paid).quantize(Decimal("0.01"))
+        rows.append((r,d,paid.quantize(Decimal("0.01")),remaining))
     account=_central_account()
     legacy={}
     for p in payments:
@@ -127,7 +140,7 @@ def pagos_diarios():
     {% if not account %}<p class="warn">Primero registrá la cuenta central y su saldo inicial.</p>{% endif %}
     <form method="get" class="grid"><div><label>Buscar ticket o proveedor</label><input name="q" value="{{q}}"></div><div><label>Mes del historial</label><input name="mes" type="month" value="{{month}}"></div><div style="align-self:end"><button>Consultar</button><a class="btn" href="{{url_for('pagos_diarios')}}">Limpiar</a></div></form>
     <table><tr><th>Fecha del ticket</th><th>Registrado el</th><th>Ticket</th><th>Proveedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Registrar pago</th></tr>
-    {% for r,d,paid,remaining in rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{r.amount}}</td><td>{{paid}}</td><td>{{remaining}}</td><td>{{'Pagado' if remaining==0 else 'Pendiente' if paid==0 else 'Pago parcial'}}</td><td>{% if remaining>0 %}<form method="post" action="{{url_for('pagar_ticket',rid=r.id)}}"><input name="importe" type="number" min="0.01" step="0.01" value="{{remaining}}" required><select name="medio" required><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select><input name="comprobante" placeholder="N.º comprobante (opcional)"><button {% if not account %}disabled{% endif %}>Marcar pagado / registrar monto</button></form>{% else %}Pagado{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay tickets registrados.</td></tr>{% endfor %}</table></section>
+    {% for r,d,paid,remaining in rows %}<tr><td>{{d.get('_display_fecha','')}}</td><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('_display_ticket','')}}</td><td>{{d.get('_display_persona','')}}</td><td>{{r.amount or d.get('total','0')}}</td><td>{{paid}}</td><td>{{remaining}}</td><td>{{'Pagado' if remaining==0 else 'Pendiente' if paid==0 else 'Pago parcial'}}</td><td>{% if remaining>0 %}<form method="post" action="{{url_for('pagar_ticket',rid=r.id)}}"><input name="importe" type="number" min="0.01" step="0.01" value="{{remaining}}" required><select name="medio" required><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select><input name="comprobante" placeholder="N.º comprobante (opcional)"><button {% if not account %}disabled{% endif %}>Marcar pagado / registrar monto</button></form>{% else %}Pagado{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay tickets registrados.</td></tr>{% endfor %}</table></section>
     <section class="card"><h2>Historial de pagos registrados</h2><table><tr><th>Fecha y hora del pago</th><th>Ticket</th><th>Proveedor</th><th>Medio</th><th>Importe pagado</th><th>Estado</th><th>Comprobante</th></tr>
     {% for p,d in payment_history %}<tr><td>{{local_time(p.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('medio','')}}</td><td>{{p.amount}}</td><td>{{p.status}}</td><td>{{d.get('comprobante','')}}</td></tr>{% else %}<tr><td colspan="7">No hay pagos registrados para ese mes.</td></tr>{% endfor %}</table></section>
     <section class="card"><h2>Historial de pagos anteriores</h2><table><tr><th>Fecha</th><th>Ticket</th><th>Proveedor</th><th>Total ticket</th><th>Importe pagado</th><th>Saldo según registro</th><th>Estado</th></tr>
@@ -137,7 +150,7 @@ def pagos_diarios():
 def pagar_ticket(rid):
     _can_caja()
     ticket=db.get_or_404(Record,rid)
-    if ticket.module!="tickets_entrada": abort(404)
+    if ticket.module not in ("tickets_entrada","tickets"): abort(404)
     try:
         amount=Decimal(request.form.get("importe","").strip().replace(",","."))
         if amount<=0: raise InvalidOperation()
@@ -148,10 +161,19 @@ def pagar_ticket(rid):
         if amount>Decimal(str(account.balance or 0)):
             flash("Saldo insuficiente en la cuenta central. No se registró el pago.")
             return redirect(url_for("pagos_diarios"))
-        previous=[p for p in Record.query.filter_by(module="pagos_diarios").all() if str(_data(p).get("ticket_entrada_id",""))==str(ticket.id)]
+        data_ticket=_data(ticket)
+        ticket_number=str(data_ticket.get("ticket") or data_ticket.get("numero_ticket") or data_ticket.get("nro_ticket") or ("CARGA-"+str(ticket.id))).strip()
+        previous=[]
+        for p in Record.query.filter_by(module="pagos_diarios").all():
+            pd=_data(p)
+            if (str(pd.get("ticket_entrada_id",""))==str(ticket.id) or
+                str(pd.get("ticket_origen_id",""))==str(ticket.id) or
+                str(pd.get("ticket","")).strip().casefold()==ticket_number.casefold()):
+                previous.append(p)
         paid=sum((Decimal(str(p.amount or 0)) for p in previous),Decimal("0"))
-        data_ticket=_data(ticket); total=Decimal(str(ticket.amount or 0)); remaining=max(Decimal("0"),total-paid)
-        data={"ticket":data_ticket.get("ticket",""),"ticket_entrada_id":ticket.id,"persona":data_ticket.get("persona",""),
+        total=Decimal(str(ticket.amount or data_ticket.get("total","0") or 0)); remaining=max(Decimal("0"),total-paid)
+        person=str(data_ticket.get("persona") or data_ticket.get("cliente") or "")
+        data={"ticket":ticket_number,("ticket_entrada_id" if ticket.module=="tickets_entrada" else "ticket_origen_id"):ticket.id,"persona":person,
               "total":str(total),"fecha":datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d"),
               "medio":request.form.get("medio","Efectivo"),"comprobante":request.form.get("comprobante","").strip(),
               "importe":str(amount),"pagado_acumulado":str(paid+amount),"saldo":str(max(Decimal("0"),remaining-amount)),
@@ -164,7 +186,7 @@ def pagar_ticket(rid):
         ticket.data=json.dumps(data_ticket,ensure_ascii=False)
         log_action("descontar pago de cuenta central","pagos_diarios",pay.id,
                    "Ticket "+str(data["ticket"])+"; importe "+str(amount)+"; saldo central "+str(account.balance))
-        log_action("registrar pago de ticket","tickets_entrada",ticket.id,
+        log_action("registrar pago de ticket",ticket.module,ticket.id,
                    "Pago "+str(amount)+"; saldo ticket "+data_ticket["saldo"])
         db.session.commit()
         flash("Pago registrado. Importe: Gs. "+str(amount)+"; saldo del ticket: Gs. "+data_ticket["saldo"]+"; saldo central: Gs. "+str(account.balance))
