@@ -661,7 +661,7 @@ def _gomeria_inventory_state():
 @app.route("/inventario-gomeria",methods=["GET","POST"])
 @login_required
 def gomeria_inventario():
-    _can_area("gomeria")
+    if not (current_user().role=="admin" or allowed("gomeria_inventario")): abort(403)
     if request.method=="POST":
         try:
             name=request.form.get("material","").strip()
@@ -769,7 +769,7 @@ def servicios_gomeria():
 @app.get("/gomeria-movimientos")
 @login_required
 def gomeria_movimientos():
-    _can_area("gomeria")
+    if not (current_user().role=="admin" or allowed("gomeria_movimientos")): abort(403)
     rows=[(r,_data(r)) for r in _rows("gomeria_movimientos")]
     rows.sort(key=lambda item:item[0].created_at,reverse=True)
     return _page("Movimientos de inventario de gomería", """
