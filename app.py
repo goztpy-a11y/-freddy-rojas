@@ -67,7 +67,7 @@ MODULES = {
  "gastos": ("Gastos", "caja", [
   ("fecha","Fecha del gasto","date",True),("categoria","Categoría","text",True),("detalle","Detalle completo","text",True),
   ("importe","Importe","number",True),("medio","Medio de pago / cuenta utilizada","text",False),("comprobante","Comprobante","text",False)]),
- "ventas": ("Venta", "inventario", [
+ "ventas": ("Venta de combustible", "estacion", [
   ("fecha","Fecha","date",True),("destino","Empresa / destino","text",True),("material","Material","text",True),
   ("cantidad","Kilogramos","number",True),("chofer","Chofer","text",True),("camion","Camión","text",True)]),
  "cuentas_pagar": ("Cuentas por pagar", "tesoreria", [
@@ -503,7 +503,7 @@ footer{display:block!important;color:#8b99aa}
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>{{ company_settings.get('company_name', 'EL TORO S.A.') }}</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a>{% endif %}
-{% if user.role=='admin' or allowed('inventario') %}<a href="{{url_for('general_history')}}">Historial de inventario</a>{% endif %}
+{% if user.role=='admin' or (allowed('inventario') and not allowed('estacion')) %}<a href="{{url_for('general_history')}}">Historial de inventario</a>{% endif %}
 {% if user.role!='admin' and (user.areas or '').split(',')|map('trim')|list == ['inventario'] %}<a href="{{url_for('admin_section',section='inventario')}}">Inventarios</a>{% endif %}
 {% if user.role=='admin' %}
 <a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
@@ -516,7 +516,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('servicios_gomeria')}}">Servicio de gomería</a><a href="{{url_for('gomeria_inventario')}}">Inventario de materiales</a><a href="{{url_for('gomeria_movimientos')}}">Movimientos de materiales</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('admin_section',section='auditoria')}}">Auditoría</a>{% endif %}
-{% for key,meta in MODULES.items() %}{% if key not in ['tickets','pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','gomeria','gomeria_servicios','gomeria_inventario','gomeria_movimientos','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
+{% for key,meta in MODULES.items() %}{% if key not in ['tickets','pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','gomeria','gomeria_servicios','gomeria_inventario','gomeria_movimientos','fletes','caja_chica','inventario','ventas'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
@@ -720,6 +720,7 @@ def admin_section(section):
         ("Historial", url_for("general_history"), "Historial general de registros")]),
       "administracion": ("Administración", "CONFIGURACIÓN DEL SISTEMA", "Usuarios, permisos y herramientas administrativas.", [
         ("Usuarios y permisos", url_for("users"), "Crear usuarios y asignar áreas"),
+        ("Inventario de materiales", url_for("module_page",module="inventario"), "Administrar existencias y movimientos de materiales"),
         ("Materiales y precios", url_for("module_page",module="materiales"), "Administrar catálogo"),
         ("Cuentas de la empresa", url_for("module_page",module="cuentas_empresa"), "Cuentas bancarias y saldos"),
         ("Informe de accesos", url_for("access_report"), "Registro de ingresos"),
