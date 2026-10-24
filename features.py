@@ -19,6 +19,9 @@ MODULES.update({
     "combustible_camion": ("Cargas de combustible por camión", "estacion", []),
     "mantenimiento": ("Mantenimiento de camiones y maquinarias", "estacion", []),
     "gomeria_camiones": ("Gomería por camión", "gomeria", []),
+    "gomeria_servicios": ("Servicios de gomería", "gomeria", []),
+    "gomeria_inventario": ("Inventario de materiales de gomería", "gomeria", []),
+    "gomeria_movimientos": ("Movimientos de inventario de gomería", "gomeria", []),
     "caja_chica": ("Caja chica", "caja", []),
     "informe_materiales": ("Informe de materiales", "inventario", []),
 })
@@ -603,9 +606,100 @@ def mantenimiento():
     <section class="card"><h2>Historial de mantenimientos</h2><table><tr><th>Fecha</th><th>Equipo</th><th>Lectura</th><th>Tipo</th><th>Trabajo</th><th>Responsable</th></tr>{% for r in maint %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('equipo')}}</td><td>{{d.get('lectura')}}</td><td>{{d.get('tipo')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('responsable')}}</td></tr>{% endfor %}</table></section>
     """,equip=equip,summaries=summaries,maint=maint,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
-@app.route("/gomeria-camiones",methods=["GET","POST"])
+@app.get("/gomeria-camiones")
 @login_required
 def gomeria_camiones():
+    _can_area("gomeria")
+    equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
+    selected=request.args.get("camion","").strip()
+    q=request.args.get("q","").strip().casefold()
+    rows=[(r,_data(r)) for r in (_rows("gomeria_camiones")+_rows("gomeria_servicios")+_rows("gomeria"))]
+    rows.sort(key=lambda item:item[0].created_at,reverse=True)
+    if selected:
+        rows=[item for item in rows if item[1].get("camion","").casefold()==selected.casefold()]
+    if q:
+        rows=[item for item in rows if q in (item[0].title+" "+item[0].data).casefold()]
+    return _page("Gomería por camión", """
+    <section class="card"><h2>Historial individual por camión</h2>
+    <form method="get" class="grid"><div><label>Camión</label><select name="camion"><option value="">Todos los camiones</option>{% for e in equip %}<option value="{{e.get('nombre')}}" {% if selected==e.get('nombre') %}selected{% endif %}>{{e.get('nombre')}}</option>{% endfor %}</select></div>
+    <div><label>Buscar trabajo, servicio o responsable</label><input name="q" value="{{q}}"></div><div style="align-self:end"><button>Consultar historial</button> <a class="btn" href="{{url_for('gomeria_camiones')}}">Limpiar</a></div></form>
+    <button type="button" onclick="window.print()">Imprimir historial</button>
+    <table><tr><th>Fecha y hora</th><th>Camión</th><th>Servicio</th><th>Trabajo realizado</th><th>Materiales utilizados</th><th>Cantidad</th><th>Costo (Gs.)</th><th>Responsable</th><th>Registro</th></tr>
+    {% for r,d in rows %}<tr><td>{{d.get('fecha',local_time(r.created_at).strftime('%Y-%m-%d'))}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('servicio',d.get('tipo','Registro anterior'))}}</td><td>{{d.get('detalle',d.get('observaciones',''))}}</td><td>{% for m in d.get('materiales',[]) %}{{m.get('material')}}: {{m.get('cantidad')}} {{m.get('unidad','')}}{% if not loop.last %}; {% endif %}{% endfor %}</td><td>{{d.get('cantidad','')}}</td><td>{{d.get('costo','')}}</td><td>{{d.get('responsable','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Ver / imprimir</a></td></tr>{% else %}<tr><td colspan="9">No hay trabajos para este filtro.</td></tr>{% endfor %}</table></section>
+    """,rows=rows,equip=equip,selected=selected,q=q)
+
+
+def _gomeria_inventory_state():
+    entries=_rows("gomeria_inventario")
+    used={}
+    names={}
+    units={}
+    for rec in entries:
+        d=_data(rec); name=str(d.get("material","")).strip()
+        if not name: continue
+        key=name.casefold()
+        names[key]=name; units[key]=d.get("unidad","unidad")
+        try: qty=Decimal(str(d.get("cantidad",0) or 0))
+        except (InvalidOperation,ValueError): qty=Decimal("0")
+        if d.get("tipo","Entrada")=="Entrada":
+            used[key]=used.get(key,Decimal("0"))+qty
+        elif d.get("tipo")=="Ajuste":
+            used[key]=used.get(key,Decimal("0"))+qty
+    services=_rows("gomeria_servicios")
+    for rec in services:
+        d=_data(rec)
+        for item in d.get("materiales",[]):
+            name=str(item.get("material","")).strip()
+            if not name: continue
+            key=name.casefold(); names.setdefault(key,name); units.setdefault(key,item.get("unidad","unidad"))
+            try: qty=Decimal(str(item.get("cantidad",0) or 0))
+            except (InvalidOperation,ValueError): qty=Decimal("0")
+            used[key]=used.get(key,Decimal("0"))-qty
+    return entries,services,{key:{"material":names[key],"unidad":units.get(key,"unidad"),"stock":qty} for key,qty in used.items()}
+
+
+@app.route("/inventario-gomeria",methods=["GET","POST"])
+@login_required
+def gomeria_inventario():
+    _can_area("gomeria")
+    if request.method=="POST":
+        try:
+            name=request.form.get("material","").strip()
+            unit=request.form.get("unidad","unidad").strip() or "unidad"
+            qty=Decimal(request.form.get("cantidad","").strip().replace(",","."))
+            if not name or qty<=0: raise InvalidOperation()
+            _,_,stock=_gomeria_inventory_state()
+            key=name.casefold()
+            if key in stock and stock[key]["unidad"].casefold()!=unit.casefold():
+                flash("Ese material ya existe con otra unidad. Usá la unidad ya registrada.")
+                return redirect(url_for("gomeria_inventario"))
+            _save("gomeria_inventario","Entrada de material · "+name,{"material":stock[key]["material"] if key in stock else name,"unidad":unit if key not in stock else stock[key]["unidad"],"cantidad":str(qty),"tipo":"Entrada","detalle":request.form.get("detalle","").strip(),"fecha":paraguay_now().strftime("%Y-%m-%d"),"registrado_por":current_user().username},0,"Entrada")
+            flash("Entrada de material registrada; se actualizó el stock de gomería.")
+        except (InvalidOperation,ValueError):
+            flash("Ingresá un material y una cantidad válida mayor que cero.")
+        return redirect(url_for("gomeria_inventario"))
+    entries,services,stock=_gomeria_inventory_state()
+    materials=sorted(stock.values(),key=lambda x:x["material"].casefold())
+    movements=[(r,_data(r)) for r in entries]
+    for r in services:
+        d=_data(r)
+        for item in d.get("materiales",[]):
+            movements.append((r,{"fecha":d.get("fecha",""),"tipo":"Salida por servicio","material":item.get("material",""),"cantidad":item.get("cantidad",""),"unidad":item.get("unidad",""),"detalle":d.get("camion","")+" · "+d.get("servicio","")+" · "+d.get("detalle",""),"responsable":d.get("responsable","")}))
+    movements.sort(key=lambda item:item[0].created_at,reverse=True)
+    return _page("Inventario de materiales de gomería", """
+    <section class="card"><h2>Registrar entrada de materiales</h2><form method="post" class="grid">
+    <div><label>Material</label><input name="material" maxlength="160" required placeholder="Ej.: cámara, parche, válvula"></div>
+    <div><label>Unidad de control</label><select name="unidad"><option>unidad</option><option>par</option><option>paquete</option><option>litro</option><option>metro</option><option>kg</option></select></div>
+    <div><label>Cantidad que ingresa</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div>
+    <div><label>Comprobante / observación</label><input name="detalle"></div><div style="align-self:end"><button>Registrar entrada</button></div></form></section>
+    <section class="card"><h2>Existencias actuales</h2><button type="button" onclick="window.print()">Imprimir inventario</button><table><tr><th>Material</th><th>Unidad</th><th>Stock disponible</th></tr>{% for m in materials %}<tr><td>{{m.material}}</td><td>{{m.unidad}}</td><td><b>{{m.stock}}</b></td></tr>{% else %}<tr><td colspan="3">Todavía no hay materiales cargados.</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de movimientos</h2><table><tr><th>Fecha y hora</th><th>Movimiento</th><th>Material</th><th>Cantidad</th><th>Detalle / trabajo</th><th>Responsable</th></tr>{% for r,d in movements %}<tr><td>{{d.get('fecha',local_time(r.created_at).strftime('%Y-%m-%d'))}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('tipo','Entrada')}}</td><td>{{d.get('material','')}}</td><td>{{d.get('cantidad','')}} {{d.get('unidad','')}}</td><td>{{d.get('detalle','')}}</td><td>{{d.get('responsable',d.get('registrado_por',''))}}</td></tr>{% else %}<tr><td colspan="6">No hay movimientos registrados.</td></tr>{% endfor %}</table></section>
+    """,materials=materials,movements=movements)
+
+
+@app.route("/servicios-gomeria",methods=["GET","POST"])
+@login_required
+def servicios_gomeria():
     _can_area("gomeria")
     if request.method=="POST":
         try:
@@ -613,38 +707,75 @@ def gomeria_camiones():
             fecha=request.form.get("fecha","").strip()
             servicio=request.form.get("servicio","").strip()
             detalle=request.form.get("detalle","").strip()
-            cantidad=Decimal(request.form.get("cantidad","0").replace(",",".") or "0")
-            raw_cost=request.form.get("costo","").strip().replace(",",".")
-            costo=Decimal(raw_cost) if raw_cost else Decimal("0")
-            if not camion or not fecha or not servicio or not detalle or cantidad<0 or costo<0:
-                raise InvalidOperation()
-            data={"camion":camion,"fecha":fecha,"servicio":servicio,"detalle":detalle,"cantidad":str(cantidad),
-                  "costo":str(costo),"responsable":request.form.get("responsable","").strip(),
-                  "observaciones":request.form.get("observaciones","").strip()}
-            _save("gomeria_camiones",camion+" · "+servicio,data,costo,"Pagado" if costo>0 else "Registrado")
-            if costo>0:
-                log_action("gomería con costo registrado","gomeria_camiones",None,f"{camion}; {servicio}; Gs. {costo}")
-            flash("Servicio de gomería registrado.")
-        except (InvalidOperation,ValueError):
-            flash("Revisá los datos del servicio y el costo; el costo puede quedar vacío si no se pagó.")
-        return redirect(url_for("gomeria_camiones"))
-    rows=[(r,_data(r)) for r in (_rows("gomeria_camiones")+_rows("gomeria"))]
-    rows.sort(key=lambda item:item[0].created_at,reverse=True)
+            costo=Decimal((request.form.get("costo","0").strip() or "0").replace(",","."))
+            if not camion or not fecha or not servicio or not detalle or costo<0: raise InvalidOperation()
+            _,_,stock=_gomeria_inventory_state()
+            materials=[]
+            for i in range(8):
+                name=request.form.get("material_"+str(i),"").strip()
+                raw=request.form.get("cantidad_"+str(i),"").strip().replace(",",".")
+                if not name and not raw: continue
+                if not name or not raw: raise InvalidOperation()
+                qty=Decimal(raw)
+                if qty<=0: raise InvalidOperation()
+                match=next((x for x in stock.values() if x["material"].casefold()==name.casefold()),None)
+                if not match: raise InvalidOperation()
+                if qty>match["stock"]: 
+                    flash("Stock insuficiente para "+match["material"]+". Disponible: "+str(match["stock"])+" "+match["unidad"]+". No se guardó el servicio.")
+                    return redirect(url_for("servicios_gomeria"))
+                materials.append({"material":match["material"],"cantidad":str(qty),"unidad":match["unidad"]})
+            if not materials:
+                flash("Seleccioná al menos un material utilizado en el trabajo.")
+                return redirect(url_for("servicios_gomeria"))
+            # Validate combined duplicate lines against the same stock before writing any record.
+            aggregate={}
+            for item in materials:
+                key=item["material"].casefold(); aggregate[key]=aggregate.get(key,Decimal("0"))+Decimal(item["cantidad"])
+            for key,qty in aggregate.items():
+                if qty>stock[key]["stock"]:
+                    flash("Stock insuficiente para "+stock[key]["material"]+". Disponible: "+str(stock[key]["stock"])+" "+stock[key]["unidad"]+". No se guardó el servicio.")
+                    return redirect(url_for("servicios_gomeria"))
+            data={"camion":camion,"fecha":fecha,"servicio":servicio,"detalle":detalle,"materiales":materials,"costo":str(costo),"responsable":request.form.get("responsable","").strip(),"observaciones":request.form.get("observaciones","").strip(),"registrado_por":current_user().username}
+            rec=Record(module="gomeria_servicios",title=camion+" · "+servicio,data=json.dumps(data,ensure_ascii=False),amount=costo,status="Registrado",created_by=current_user().id)
+            db.session.add(rec); db.session.flush()
+            for item in materials:
+                movement={"fecha":fecha,"tipo":"Salida por servicio","material":item["material"],"cantidad":item["cantidad"],"unidad":item["unidad"],"camion":camion,"servicio":servicio,"detalle":detalle,"servicio_id":rec.id,"responsable":data["responsable"],"registrado_por":current_user().username}
+                mr=Record(module="gomeria_movimientos",title="Uso de "+item["material"]+" · "+camion,data=json.dumps(movement,ensure_ascii=False),amount=0,status="Salida",created_by=current_user().id)
+                db.session.add(mr)
+            log_action("registrar servicio de gomería","gomeria_servicios",rec.id,camion+"; "+servicio+"; materiales "+", ".join(x["material"]+" "+x["cantidad"] for x in materials))
+            db.session.commit()
+            flash("Servicio registrado. Los materiales utilizados quedaron descontados del inventario y vinculados al historial del camión.")
+        except (InvalidOperation,ValueError,TypeError):
+            db.session.rollback()
+            flash("No se guardó el servicio. Verificá los datos, las cantidades y que los materiales existan en el inventario.")
+        return redirect(url_for("servicios_gomeria"))
     equip=[_data(r) for r in _rows("flota_equipo") if _data(r).get("tipo")=="Camión"]
-    return _page("Gomería por camión", """
-    <section class="card"><h2>Registrar servicio de gomería</h2><form method="post" class="grid">
-    <div><label>Camión</label><select name="camion" required><option value="">Seleccionar</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div>
-    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-    <div><label>Tipo de servicio</label><select name="servicio" required><option>Reparación de cubierta</option><option>Cambio de cubierta</option><option>Reparación de cámara</option><option>Cambio de cámara</option><option>Otro</option></select></div>
-    <div><label>Descripción del trabajo</label><input name="detalle" required></div><div><label>Cantidad (si aplica)</label><input name="cantidad" type="number" min="0" step="0.001"></div>
-    <div><label>Costo pagado (Gs., opcional)</label><input name="costo" type="number" min="0" step="0.01"></div>
-    <div><label>Responsable</label><input name="responsable"></div><div><label>Observaciones</label><input name="observaciones"></div>
+    _,_,stock=_gomeria_inventory_state()
+    materials=sorted([m for m in stock.values() if m["stock"]>0],key=lambda x:x["material"].casefold())
+    rows=[(r,_data(r)) for r in _rows("gomeria_servicios")]
+    return _page("Servicios de gomería", """
+    <section class="card"><h2>Registrar trabajo realizado a un camión</h2><form method="post" class="grid">
+    <div><label>Camión</label><select name="camion" required><option value="">Seleccionar camión</option>{% for e in equip %}<option>{{e.get('nombre')}}</option>{% endfor %}</select></div>
+    <div><label>Fecha del servicio</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Servicio realizado</label><select name="servicio" required><option value="">Seleccionar</option><option>Reparación de cubierta</option><option>Cambio de cubierta</option><option>Reparación de cámara</option><option>Cambio de cámara</option><option>Rotación de neumáticos</option><option>Balanceo</option><option>Vulcanizado</option><option>Otro</option></select></div>
+    <div><label>Descripción del trabajo</label><input name="detalle" required></div>
+    <div><label>Costo pagado (Gs., opcional)</label><input name="costo" type="number" min="0" step="1"></div><div><label>Responsable</label><input name="responsable"></div><div><label>Observaciones</label><input name="observaciones"></div>
+    <div style="grid-column:1/-1"><h3>Materiales utilizados</h3>{% for i in range(4) %}<div class="grid" style="grid-template-columns:2fr 1fr"><div><label>Material {{i+1}}</label><select name="material_{{i}}"><option value="">No seleccionar</option>{% for m in materials %}<option value="{{m.material}}">{{m.material}} · stock {{m.stock}} {{m.unidad}}</option>{% endfor %}</select></div><div><label>Cantidad usada</label><input name="cantidad_{{i}}" type="number" min="0.001" step="0.001"></div></div>{% endfor %}</div>
     <div style="align-self:end"><button>Guardar servicio</button></div></form></section>
-    <section class="card"><h2>Historial de gomería por camión</h2><button type="button" onclick="window.print()">Imprimir</button>
-    <table><tr><th>Fecha</th><th>Camión</th><th>Servicio</th><th>Descripción</th><th>Cantidad</th><th>Costo</th><th>Responsable</th><th>Observaciones</th><th>Imprimir</th></tr>
-    {% for r,d in rows %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('detalle')}}</td><td>{{d.get('cantidad')}}</td><td>{{d.get('costo')}}</td><td>{{d.get('responsable')}}</td><td>{{d.get('observaciones')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-    """,rows=rows,equip=equip,today=paraguay_now().strftime("%Y-%m-%d"))
+    <section class="card"><h2>Servicios registrados</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha y hora</th><th>Camión</th><th>Servicio</th><th>Trabajo</th><th>Materiales utilizados</th><th>Costo</th><th>Responsable</th></tr>{% for r,d in rows %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('detalle')}}</td><td>{% for m in d.get('materiales',[]) %}{{m.get('material')}}: {{m.get('cantidad')}} {{m.get('unidad')}}{% if not loop.last %}; {% endif %}{% endfor %}</td><td>{{d.get('costo')}}</td><td>{{d.get('responsable')}}</td></tr>{% else %}<tr><td colspan="7">Todavía no hay servicios nuevos registrados.</td></tr>{% endfor %}</table></section>
+    """,equip=equip,materials=materials,rows=rows,today=paraguay_now().strftime("%Y-%m-%d"))
 
+
+@app.get("/gomeria-movimientos")
+@login_required
+def gomeria_movimientos():
+    _can_area("gomeria")
+    rows=[(r,_data(r)) for r in _rows("gomeria_movimientos")]
+    rows.sort(key=lambda item:item[0].created_at,reverse=True)
+    return _page("Movimientos de inventario de gomería", """
+    <section class="card"><h2>Movimientos de materiales usados en servicios</h2><table><tr><th>Fecha y hora</th><th>Material</th><th>Cantidad</th><th>Camión</th><th>Servicio</th><th>Trabajo</th></tr>{% for r,d in rows %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('material')}}</td><td>{{d.get('cantidad')}} {{d.get('unidad')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('servicio')}}</td><td>{{d.get('detalle')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay movimientos de salida.</td></tr>{% endfor %}</table></section>
+    """,rows=rows)
+    
 
 @app.get("/auditoria-pagos")
 @login_required
