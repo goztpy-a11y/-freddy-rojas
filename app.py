@@ -893,7 +893,8 @@ def module_page(module):
         }
         clientField.addEventListener('input',showVendorMatches);
         clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);});
-        clientField.addEventListener('blur',()=>setTimeout(()=>{suggestions.style.display='none';},180));
+        // No cerrar en blur: en móviles el toque puede quitar el foco antes del click de la sugerencia.
+        // El menú se cierra al seleccionar un proveedor o al tocar fuera del listado.
         document.addEventListener('click',e=>{if(!suggestions.contains(e.target)&&e.target!==clientField)suggestions.style.display='none';});
         document.getElementById('ticket-lines').addEventListener('change',e=>{if(e.target.name==='material')updatePrices(false,e.target.closest('.ticket-line'));});
         document.getElementById('ticket-lines').addEventListener('input',e=>{const row=e.target.closest('.ticket-line');if(row&&(e.target.name==='cantidad'||e.target.name==='precio'))updateLineTotal(row);});
