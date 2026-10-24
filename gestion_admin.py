@@ -1,5 +1,6 @@
 # Administracion de clientes y control ampliado de flota para Freddy Rojas.
 import json
+import sys
 from decimal import Decimal, InvalidOperation
 from flask import request, redirect, url_for, render_template_string, flash, abort
 import app as core
@@ -43,6 +44,12 @@ if "Administrar clientes" not in core.BASE:
         '<a href="{{url_for(\'admin_section\',section=\'estacion\')}}">⛽ &nbsp; Estación de servicio</a>',
         '<a href="{{url_for(\'admin_section\',section=\'estacion\')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for(\'control_flota\')}}">🚚 &nbsp; Control de camiones y maquinarias</a>'
     )
+
+# Los módulos existentes importaron BASE antes de esta ampliación; sincronizar la navegación en todos.
+for _module_name in ("features", "pagos_ui", "pagos_save", "caja_tickets", "salidas_material", "materiales_report"):
+    _loaded_module = sys.modules.get(_module_name)
+    if _loaded_module is not None and hasattr(_loaded_module, "BASE"):
+        _loaded_module.BASE = core.BASE
 
 @app.route("/administrar-clientes", methods=["GET", "POST"])
 @login_required
