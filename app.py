@@ -963,13 +963,14 @@ def module_page(module):
         </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q,vendor_prices=vendor_prices,material_prices=material_prices)
     if module == "auditoria" and request.method == "GET":
         q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
-        modules_allowed=set(MODULES.keys())
+        # Auditoría muestra movimientos económicos reales, no efectos secundarios de inventario ni saldos de apertura.
+        modules_allowed={"pagos_diarios","gastos","caja_chica","pagos_cuentas","cobros_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","planillas","cheques"}
         all_records=Record.query.order_by(Record.created_at.desc()).all(); results=[]
         for rec in all_records:
-            # Los registros de alta/edición de proveedores y precios no son movimientos financieros.
-            if rec.module == "proveedores": continue
-            if rec.module not in modules_allowed and rec.module not in {"pagos_diarios","prestamos_pagos","pagos_cuentas","combustible_camion","gomeria_camiones","fletes","planillas","flota","mantenimiento","gastos"}: continue
-            d=json.loads(rec.data or "{}"); hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
+            if rec.module not in modules_allowed: continue
+            d=json.loads(rec.data or "{}")
+            if rec.module=="caja_chica" and d.get("tipo")!="gasto": continue
+            hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
             if q and q not in hay: continue
             if since and local_time(rec.created_at).strftime("%Y-%m-%d")<since: continue
             if until and local_time(rec.created_at).strftime("%Y-%m-%d")>until: continue
@@ -977,7 +978,8 @@ def module_page(module):
             results.append((rec,d))
         # La auditoría centralizada muestra operaciones y cambios, no eventos de acceso.
         logs=[x for x in AuditLog.query.order_by(AuditLog.created_at.desc()).all()
-              if (x.action or "").strip().casefold() not in {"inicio de sesión","cerrar sesión","inicio de sesion","cerrar sesion"}]
+              if (x.action or "").strip().casefold() not in {"inicio de sesión","cerrar sesión","inicio de sesion","cerrar sesion"}
+              and (x.module or "").strip().casefold() not in {"proveedores","clientes"}]
         if q: logs=[x for x in logs if q in (x.action+" "+x.module+" "+x.detail).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>Auditoría centralizada</h2><form method="get" class="grid">
