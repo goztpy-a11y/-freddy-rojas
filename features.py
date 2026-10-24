@@ -69,7 +69,7 @@ def pagos_diarios():
     return _page("Pagos diarios", """
     <section class="card"><h2>Registrar pago diario</h2><form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
     <div><label>Número de ticket</label><input name="ticket" required></div><div><label>Número de comprobante de este pago</label><input name="comprobante" required></div>
-    <div><label>Cliente / proveedor</label><input name="persona" required></div><div><label>Importe total del ticket/deuda (Gs.)</label><input name="total" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Proveedor</label><input name="persona" required></div><div><label>Importe total del ticket/deuda (Gs.)</label><input name="total" type="number" min="0.01" step="0.01" required></div>
     <div><label>Importe que se paga ahora (Gs.)</label><input name="pago" type="number" min="0.01" step="0.01" required></div>
     <div><label>Fecha del pago</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div>
@@ -105,7 +105,7 @@ def crear_pago_diario():
     paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
     if previous:
         if any(_data(r).get("persona","").strip().casefold()!=persona.casefold() for r in previous):
-            flash("Ese número de ticket ya pertenece a otro cliente/proveedor.")
+            flash("Ese número de ticket ya pertenece a otro proveedor.")
             return redirect(url_for("pagos_diarios"))
         old_total=Decimal(str(_data(previous[0]).get("total",total)))
         if old_total!=total:
@@ -188,9 +188,9 @@ def prestamos():
     <div><label>Plazo (máximo 12 meses)</label><input name="plazo" type="number" min="1" max="12" value="12" required></div>
     <div><label>Modalidad de pago</label><select name="modalidad"><option>Efectivo</option><option>Automático</option></select></div>
     <div><label>Próximo vencimiento</label><input name="vencimiento" type="date"></div><div><label>Observaciones</label><input name="observaciones"></div><div style="align-self:end"><button>Guardar préstamo</button></div></form></section>
-    <section class="card"><h2>Préstamos y saldos</h2><button onclick="window.print()" type="button">Imprimir</button><table><tr><th>Entidad / cliente</th><th>Fecha</th><th>Monto</th><th>Pagado</th><th>Saldo</th><th>Plazo</th><th>Estado</th><th>Registrar pago</th></tr>
+    <section class="card"><h2>Préstamos y saldos</h2><button onclick="window.print()" type="button">Imprimir</button><table><tr><th>Proveedor / responsable</th><th>Fecha</th><th>Monto</th><th>Pagado</th><th>Saldo</th><th>Plazo</th><th>Estado</th><th>Registrar pago</th></tr>
     {% for r,d,paid,balance in summaries %}<tr><td>{{d.get('proveedor',d.get('entidad'))}} / {{d.get('cliente')}}</td><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('monto')}}</td><td>{{paid}}</td><td>{{balance}}</td><td>{{d.get('plazo_meses')}} meses</td><td>{{'Pagado' if balance==0 else ('Vencido' if d.get('vencimiento') and d.get('vencimiento')<today else 'Pendiente')}}</td><td>{% if balance>0 %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="prestamo_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" step="0.01" placeholder="Monto recibido" required><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Automático</option><option>Cheque</option></select><input name="cuota" placeholder="N.º cuota"><input name="observaciones" placeholder="Detalle"><button>Registrar pago</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
-    <section class="card"><h2>Historial de pagos de préstamos</h2><table><tr><th>Fecha</th><th>Préstamo</th><th>Cliente</th><th>Recibido</th><th>Aplicado al préstamo</th><th>Saldo a favor</th><th>Medio</th></tr>{% for p in payments %}{% set d=decode(p) %}<tr><td>{{d.get('fecha')}} · {{local_time(p.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('proveedor',d.get('entidad',''))}} #{{d.get('prestamo_id')}}</td><td>{{d.get('cliente')}}</td><td>{{p.amount}}</td><td>{{d.get('aplicado',p.amount)}}</td><td>{{d.get('excedente_credito','0')}}</td><td>{{d.get('medio')}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de pagos de préstamos</h2><table><tr><th>Fecha</th><th>Préstamo</th><th>Responsable</th><th>Recibido</th><th>Aplicado al préstamo</th><th>Saldo a favor</th><th>Medio</th></tr>{% for p in payments %}{% set d=decode(p) %}<tr><td>{{d.get('fecha')}} · {{local_time(p.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('proveedor',d.get('entidad',''))}} #{{d.get('prestamo_id')}}</td><td>{{d.get('cliente')}}</td><td>{{p.amount}}</td><td>{{d.get('aplicado',p.amount)}}</td><td>{{d.get('excedente_credito','0')}}</td><td>{{d.get('medio')}}</td></tr>{% endfor %}</table></section>
     """,summaries=summaries,payments=payments,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/proveedores",methods=["GET","POST"])
