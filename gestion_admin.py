@@ -295,7 +295,7 @@ def control_flota():
         name = ed.get("nombre", "")
         rd = latest.get(name, {})
         current = Decimal(str(rd.get("lectura", ed.get("lectura_actual", 0)) or 0))
-        next_due = Decimal(str(ed.get("proximo_mantenimiento", current + Decimal(str(ed.get("intervalo", 0)))))
+        next_due = Decimal(str(ed.get("proximo_mantenimiento", current + Decimal(str(ed.get("intervalo", 0))))))
         summaries.append({"nombre": name, "chapa": ed.get("chapa", ""), "tipo": ed.get("tipo", ""),
                           "actual": current, "proximo": next_due, "unidad": ed.get("unidad", "km" if ed.get("tipo") == "Camión" else "horas"),
                           "estado": "VENCIDO" if current >= next_due else ("PRÓXIMO" if next_due-current <= Decimal(str(ed.get("intervalo", 0)))*Decimal("0.15") else "Al día")})
