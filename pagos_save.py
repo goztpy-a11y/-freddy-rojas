@@ -7,6 +7,7 @@ from features import _rows, _data, _can_caja
 def crear_pago_diario_materiales():
     _can_caja()
     source_ticket_id=request.form.get("source_ticket_id","").strip()
+    ticket=request.form.get("ticket","").strip()
     source_record=None
     source_data={}
     if source_ticket_id:
@@ -14,14 +15,28 @@ def crear_pago_diario_materiales():
             source_record=db.session.get(Record,int(source_ticket_id))
         except (ValueError,TypeError):
             source_record=None
+    elif ticket.casefold().startswith("carga-"):
+        try:
+            source_record=db.session.get(Record,int(ticket.split("-",1)[1]))
+        except (ValueError,TypeError):
+            source_record=None
+    else:
+        # Permite vincular también por el número de ticket que figure en una carga,
+        # si ese número fue guardado en el registro de origen.
+        for candidate in Record.query.filter_by(module="tickets").all():
+            candidate_data=_data(candidate)
+            candidate_number=str(candidate_data.get("numero_ticket",candidate_data.get("nro_ticket",""))).strip()
+            if candidate_number and candidate_number.casefold()==ticket.casefold():
+                source_record=candidate
+                break
+    if source_ticket_id or ticket.casefold().startswith("carga-") or source_record:
         if not source_record or source_record.module!="tickets":
-            flash("No se encontró la carga registrada. No se guardó el pago.")
+            flash("No se encontró la carga registrada con ese número de ticket. No se guardó el pago.")
             return redirect(url_for("pagos_diarios"))
         source_data=_data(source_record)
         ticket="CARGA-"+str(source_record.id)
         persona=str(source_data.get("cliente","")).strip()
     else:
-        ticket=request.form.get("ticket","").strip()
         persona=request.form.get("persona","").strip()
     comp=request.form.get("comprobante","").strip()
     fecha=request.form.get("fecha","").strip()
