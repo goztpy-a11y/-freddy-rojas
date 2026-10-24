@@ -24,9 +24,15 @@ def local_time(value):
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-only-change-me")
 app.config["ADMIN_CONFIGURED"] = bool(os.environ.get("ADMIN_PASSWORD"))
-db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db")
+db_url = os.environ.get("DATABASE_URL", "sqlite:///freddy_rojas_demo.db").strip()
+# Render puede entregar cualquiera de estos esquemas. Usar psycopg 3,
+# que es el controlador instalado en requirements.txt.
 if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgresql+psycopg2://"):
+    db_url = db_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -518,20 +524,32 @@ footer{display:block!important;color:#8b99aa}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 """
 
+def persistent_database_connected():
+    """Comprueba la conexión real sin modificar datos."""
+    if db.engine.dialect.name != "postgresql":
+        return False
+    try:
+        db.session.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        db.session.rollback()
+        app.logger.warning("No se pudo confirmar la conexión PostgreSQL", exc_info=True)
+        return False
+
 @app.context_processor
 def inject_globals():
-    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "local_time": local_time, "allowed": allowed, "company_settings": read_system_settings()}
+    return {"user": current_user(), "AREAS": AREAS, "MODULES": MODULES, "now": paraguay_now(), "local_time": local_time, "allowed": allowed, "company_settings": read_system_settings(), "database_is_persistent": persistent_database_connected()}
 
 @app.get("/health")
 def health():
     # Comprobación de solo lectura: no crea, actualiza ni elimina registros.
-    database_configured = bool(os.environ.get("DATABASE_URL"))
     try:
         db.session.execute(text("SELECT 1"))
+        is_postgres = db.engine.dialect.name == "postgresql"
         return {
             "status": "ok",
             "app": "freddy-rojas",
-            "database": "connected" if database_configured else "demo-sqlite",
+            "database": "connected" if is_postgres else "demo-sqlite",
             "read_only_check": "passed"
         }, 200
     except Exception:
@@ -618,7 +636,7 @@ def index():
       </div>
       <div class="fr-welcome-symbol" aria-hidden="true"><span>FR</span><i></i><b></b></div>
     </section>
-    {% if not config.get('DATABASE_URL') %}<div class="warn">Modo de demostración: esta instancia usa almacenamiento local temporal. No cargar operaciones reales hasta conectar una base de datos persistente y configurar copias de seguridad.</div>{% endif %}
+    {% if not database_is_persistent %}<div class="warn">Atención: no se pudo confirmar la conexión con la base de datos persistente. No registres operaciones reales hasta verificar la conexión y las copias de seguridad.</div>{% endif %}
     <div class="fr-dashboard-layout">
       <div class="fr-dashboard-primary">
         <section class="fr-section-block">
