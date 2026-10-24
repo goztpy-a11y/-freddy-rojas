@@ -1000,8 +1000,7 @@ def caja_chica():
 def view_record(rid):
     rec=db.session.get(Record,rid)
     if not rec: abort(404)
-    audit_finance_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","tickets_entrada","inventario","solicitudes","cobros_cuentas","cuentas_cobrar","proveedores","planillas","flota","cheques"}
-    if current_user().role!="admin" and not allowed(rec.module) and not (allowed("auditoria") and rec.module in audit_finance_modules): abort(403)
+    if current_user().role!="admin" and not allowed(rec.module) and not (allowed("auditoria") and rec.module in MODULES): abort(403)
     data=_data(rec)
     created=local_time(rec.created_at)
     return _page("Detalle del registro", """
