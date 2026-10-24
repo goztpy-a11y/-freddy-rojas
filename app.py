@@ -855,7 +855,7 @@ def module_page(module):
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
         const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
         let selectedVendorKey='';
-        function norm(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();}
+        function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
         function selectedVendor(){const s=norm(clientField.value);return ticketVendors.find(v=>norm(v.nombre)===s||norm(v.codigo)===s);}
         function showVendorMatches(){
           const q=norm(clientField.value);suggestions.replaceChildren();
