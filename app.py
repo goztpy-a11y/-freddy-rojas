@@ -492,7 +492,7 @@ footer{display:block!important;color:#8b99aa}
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
 {% if allowed('caja') %}<a href="{{url_for('registrar_ticket')}}">Registrar ticket</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
-{% if allowed('estacion') %}<a href="{{url_for('flota')}}">Camiones y retiros</a><a href="{{url_for('combustible_stock')}}">Stock y cargas de combustible</a><a href="{{url_for('mantenimiento')}}">Mantenimiento de flota</a>{% endif %}
+{% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
@@ -661,11 +661,8 @@ def admin_section(section):
         ("Solicitudes de pago", url_for("module_page",module="solicitudes"), "Solicitudes para autorización"),
         ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa"),
         ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica")]),
-      "estacion": ("Estación de servicio", "FLOTA Y COMBUSTIBLE", "Camiones, combustible, retiros y mantenimiento.", [
-        ("Camiones y retiros", url_for("flota"), "Vehículos y retiros"),
-        ("Stock de combustible", url_for("combustible_stock"), "Existencias y cargas"),
-        ("Combustible por camión", url_for("module_page",module="combustible"), "Historial por vehículo"),
-        ("Mantenimiento", url_for("mantenimiento"), "Servicios de flota")]),
+      "estacion": ("Estación de servicio", "CONTROL DE COMBUSTIBLE", "Stock disponible, carga por chofer y chapa, e historial con fecha y hora.", [
+        ("Stock e historial de cargas", url_for("combustible_stock"), "Consultar stock y registrar cargas")]),
       "gomeria": ("Gomería", "MANTENIMIENTO DE NEUMÁTICOS", "Todas las funciones de gomería en una sola sección.", [
         ("Gomería por camión", url_for("gomeria_camiones"), "Trabajos por vehículo"),
         ("Servicios de gomería", url_for("module_page",module="gomeria"), "Registrar servicio, costo y responsable"),
