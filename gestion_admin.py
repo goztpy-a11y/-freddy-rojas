@@ -176,12 +176,15 @@ def admin_clientes():
                 except (InvalidOperation, ValueError, TypeError):
                     pass
     return _page("Administrar clientes", """
-    <section class="card"><h2>Agregar clientes registrados</h2>
+    <section class="card"><button type="button" id="toggle-clientes-registrados" aria-expanded="false" aria-controls="lista-clientes-registrados" onclick="(function(b){var p=document.getElementById('lista-clientes-registrados');var show=p.style.display==='none';p.style.display=show?'block':'none';b.setAttribute('aria-expanded',show?'true':'false');b.textContent=show?'Cerrar lista de clientes':'＋ Agregar cliente';})(this)">＋ Agregar cliente</button>
+      <div id="lista-clientes-registrados" style="display:none;margin-top:16px">
+      <h2>Agregar clientes registrados</h2>
       <p>Seleccioná uno o varios proveedores ya registrados para agregarlos a la lista de administración de deudas.</p>
       <form method="post"><input type="hidden" name="accion" value="seleccionar">
       <div style="overflow-x:auto"><table><tr><th>Seleccionar</th><th>Código</th><th>Cliente</th><th>Documento</th><th>Teléfono</th></tr>
       {% for r,d in selectable %}<tr><td><input type="checkbox" name="proveedor_id" value="{{r.id}}" style="width:auto"></td><td>{{d.get('codigo','')}}</td><td>{{d.get('nombre',r.title)}}</td><td>{{d.get('cedula','—')}}</td><td>{{d.get('telefono','—')}}</td></tr>{% else %}<tr><td colspan="5">No hay más clientes registrados para agregar.</td></tr>{% endfor %}</table></div>
       <p><button>Agregar seleccionados</button></p></form>
+      </div>
     </section>
     <section class="card"><h2>Clientes administrados y deudas</h2><div style="overflow-x:auto"><table>
       <tr><th>Cliente</th><th>Kg ingresados</th><th>Deuda actual (Gs.)</th><th>Actualizar deuda manual</th><th>Registrar pago</th></tr>
