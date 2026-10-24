@@ -973,7 +973,9 @@ def module_page(module):
             if until and local_time(rec.created_at).strftime("%Y-%m-%d")>until: continue
             if amount_filter and amount_filter not in str(rec.amount): continue
             results.append((rec,d))
-        logs=AuditLog.query.order_by(AuditLog.created_at.desc()).all()
+        # La auditoría centralizada muestra operaciones y cambios, no eventos de acceso.
+        logs=[x for x in AuditLog.query.order_by(AuditLog.created_at.desc()).all()
+              if (x.action or "").strip().casefold() not in {"inicio de sesión","cerrar sesión","inicio de sesion","cerrar sesion"}]
         if q: logs=[x for x in logs if q in (x.action+" "+x.module+" "+x.detail).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>Auditoría centralizada</h2><form method="get" class="grid">
