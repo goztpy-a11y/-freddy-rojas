@@ -866,6 +866,15 @@ def module_page(module):
         material_prices={m.name:{"id":m.id,"minorista":str(m.price or ""),"mayorista":str(m.wholesale_price or "") if m.wholesale_price is not None else ""} for m in materials}
         if request.method=="POST":
             client=request.form.get("cliente","").strip()
+            numero_ticket=request.form.get("numero_ticket","").strip()
+            if not numero_ticket:
+                flash("Ingresá el número de ticket de esta carga."); return redirect(url_for("module_page",module=module))
+            for old_ticket in Record.query.filter_by(module="tickets").all():
+                try: old_data=json.loads(old_ticket.data or "{}")
+                except (ValueError,TypeError): old_data={}
+                old_number=str(old_data.get("numero_ticket",old_data.get("nro_ticket",""))).strip()
+                if old_number and old_number.casefold()==numero_ticket.casefold():
+                    flash("Ese número de ticket ya está registrado. Usá un número único."); return redirect(url_for("module_page",module=module))
             names=request.form.getlist("material")
             quantities=request.form.getlist("cantidad")
             submitted_prices=request.form.getlist("precio")
@@ -896,7 +905,7 @@ def module_page(module):
                     flash("Revisá la cantidad y el precio de cada material."); return redirect(url_for("module_page",module=module))
             if not lines:
                 flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
-            data={"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
+            data={"numero_ticket":numero_ticket,"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush()
             # Cada carga registrada en Caja aumenta automáticamente el inventario por material.
@@ -923,7 +932,8 @@ def module_page(module):
         parsed=[(r,json.loads(r.data or "{}")) for r in hist if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><form method="post" id="ticket-form"><div class="grid">
-        <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required><div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
+        <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required>
+        <div><label>N.º de ticket</label><input name="numero_ticket" placeholder="Ingresá el número del ticket" required></div><div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
         <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
         <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Monto a pagar por este material (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
