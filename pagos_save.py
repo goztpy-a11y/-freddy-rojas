@@ -34,7 +34,7 @@ def crear_pago_diario_materiales():
             flash("No se encontró la carga registrada con ese número de ticket. No se guardó el pago.")
             return redirect(url_for("pagos_diarios"))
         source_data=_data(source_record)
-        ticket=str(source_data.get("numero_ticket",source_data.get("nro_ticket","CARGA-"+str(source_record.id))).strip() or "CARGA-"+str(source_record.id)
+        ticket=str(source_data.get("numero_ticket") or source_data.get("nro_ticket") or ("CARGA-"+str(source_record.id))).strip()
         persona=str(source_data.get("cliente","")).strip()
     else:
         persona=request.form.get("persona","").strip()
