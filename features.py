@@ -670,10 +670,48 @@ def caja_chica():
     <div><label>Clasificación</label><select name="clasificacion" required><option value="caja_chica">Caja chica (no sumar a Gastos)</option><option value="gastos">Gastos (sumar al resumen de Gastos)</option></select></div>
     <div style="align-self:end"><button>Guardar gasto</button></div></form></section>
     <section class="card"><h2>Historial de movimientos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar descripción o monto"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
-    <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th></tr>
-    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th><th>Ver</th></tr>
+    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td></tr>{% endfor %}</table></section>
     """,balance=balance,shown=shown,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
+
+
+@app.get("/registro/<int:rid>/ver")
+@login_required
+def view_record(rid):
+    rec=db.session.get(Record,rid)
+    if not rec: abort(404)
+    if current_user().role!="admin" and not allowed(rec.module): abort(403)
+    data=_data(rec)
+    created=local_time(rec.created_at)
+    return _page("Detalle del registro", """
+    <section class="card">
+      <h2>Detalle del movimiento</h2>
+      <p><b>Registro:</b> #{{rec.id}} · {{rec.title}}</p>
+      <p><b>Sector:</b> {{module_label}}</p>
+      <p><b>Fecha y hora del registro:</b> {{created.strftime('%d/%m/%Y')}} · {{created.strftime('%H:%M:%S')}}</p>
+      <p><b>Estado:</b> {{rec.status}}</p>
+      <p><b>Monto total del movimiento:</b> Gs. {{rec.amount}}</p>
+      <div style="overflow-x:auto"><table><tr><th>Dato</th><th>Detalle</th></tr>
+      {% for key,value in data.items() %}
+        {% if value is mapping %}
+          <tr><td>{{key}}</td><td>{% for subkey,subvalue in value.items() %}<div><b>{{subkey}}:</b> {{subvalue}}</div>{% endfor %}</td></tr>
+        {% elif value is sequence and value is not string %}
+          <tr><td>{{key}}</td><td>
+            {% if value and value[0] is mapping %}
+              <table><tr>{% for subkey in value[0].keys() %}<th>{{subkey}}</th>{% endfor %}</tr>
+              {% for item in value %}<tr>{% for subkey in value[0].keys() %}<td>{{item.get(subkey,'')}}</td>{% endfor %}</tr>{% endfor %}</table>
+            {% else %}{{value|join(', ')}}{% endif %}
+          </td></tr>
+        {% else %}
+          <tr><td>{{key}}</td><td>{{value if value not in (None,'') else '—'}}</td></tr>
+        {% endif %}
+      {% endfor %}
+      </table></div>
+      <p><a class="btn" href="{{url_for('report_module',module=rec.module)}}">Volver al informe</a>
+      <a class="btn" href="{{url_for('print_record',rid=rec.id)}}">Imprimir comprobante</a></p>
+    </section>
+    """,rec=rec,data=data,created=created,module_label=MODULES.get(rec.module,(rec.module,))[0])
 
 # Informes profesionales: comparaciones mensuales basadas en registros existentes.
 from zoneinfo import ZoneInfo as _ZoneInfo
@@ -821,8 +859,8 @@ def _professional_reports():
         {% if stats_kind=='materials' %}<h3>Estadística mensual por material</h3><p class="analytics-note">Comparación de actividad registrada en tickets, ventas y planillas. Se compara la cantidad (kg/unidades) de este mes con el mes anterior.</p><div style="overflow-x:auto"><table class="analytics-table"><tr><th>Material</th><th>Movimientos este mes</th><th>Movimientos mes anterior</th><th>Cantidad este mes</th><th>Cantidad mes anterior</th><th>Comparación</th></tr>{% for s in stats_rows %}<tr><td><b>{{s.name}}</b></td><td>{{s.cur_count}}</td><td>{{s.prev_count}}</td><td>{{s.cur_qty}}</td><td>{{s.prev_qty}}</td><td class="trend-{{s.trend_class}}">{{s.trend}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay materiales registrados.</td></tr>{% endfor %}</table></div>
         {% elif stats_kind=='vendors' %}<h3>Actividad mensual por proveedor</h3><p class="analytics-note">Cantidad de operaciones de tickets y planillas asociadas a cada proveedor.</p><div style="overflow-x:auto"><table class="analytics-table"><tr><th>Proveedor</th><th>Este mes</th><th>Mes anterior</th><th>Comparación</th></tr>{% for s in stats_rows %}<tr><td><b>{{s.name}}</b></td><td>{{s.cur_count}}</td><td>{{s.prev_count}}</td><td class="trend-{{s.trend_class}}">{{s.trend}}</td></tr>{% else %}<tr><td colspan="4">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div>{% endif %}
         <form method="get" class="grid"><div><label>Buscar cualquier dato</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div><div style="align-self:end"><button>Buscar</button> <a class="btn report-open" href="{{url_for('report_module',module=module)}}">Limpiar</a></div></form>
-        <p><button type="button" onclick="window.print()">Imprimir informe</button></p><div style="overflow-x:auto"><table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>
-        {% for r,d in results %}<tr><td>{{_record_date(r,d).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{'Origen del pago' if k=='modulo_origen' else k}}:</b> {% if k=='modulo_origen' %}{{'Cuentas por pagar' if v=='cuentas_pagar' else 'Solicitudes de pago' if v=='solicitudes' else 'Cuentas por cobrar' if v=='cuentas_cobrar' else 'Cheques adelantados' if v=='cheques' else v}}{% else %}{{v}}{% endif %}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% else %}<tr><td colspan="6">No hay registros para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe",label=label,module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results,kpis=kpis,stats_kind=stats_kind,stats_rows=stats_rows,_record_date=_record_date)
+        <p><button type="button" onclick="window.print()">Imprimir informe</button></p><div style="overflow-x:auto"><table><tr><th>Fecha/hora</th><th>Operación</th><th>Detalle</th><th>Estado</th><th>Monto</th><th>Ver</th><th>Imprimir</th></tr>
+        {% for r,d in results %}<tr><td>{{_record_date(r,d).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}{% if v is string %}<div><b>{{'Origen del pago' if k=='modulo_origen' else k}}:</b> {% if k=='modulo_origen' %}{{'Cuentas por pagar' if v=='cuentas_pagar' else 'Solicitudes de pago' if v=='solicitudes' else 'Cuentas por cobrar' if v=='cuentas_cobrar' else 'Cheques adelantados' if v=='cheques' else v}}{% else %}{{v}}{% endif %}</div>{% elif v is sequence and v is not string %}{% for line in v %}{% if line is mapping %}<div>{% for lk,lv in line.items() %}{{lk}}: {{lv}} · {% endfor %}</div>{% else %}{{line}}{% endif %}{% endfor %}{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% else %}<tr><td colspan="6">No hay registros para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informe",label=label,module=module,q=q,since=since,until=until,amount_filter=amount_filter,results=results,kpis=kpis,stats_kind=stats_kind,stats_rows=stats_rows,_record_date=_record_date)
     app.view_functions["reports"]=reports_pro
     app.view_functions["report_module"]=report_module_pro
 
