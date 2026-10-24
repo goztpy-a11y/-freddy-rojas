@@ -1753,6 +1753,7 @@ import pagos_save  # Guarda pagos y registra entradas de inventario
 import caja_tickets  # Separa el registro de tickets del historial de pagos
 import salidas_material  # Registra salidas de materiales desde Caja
 import materiales_report  # Informe de entradas y salidas de materiales
+import gestion_admin  # Administración de deudas de clientes y control ampliado de flota
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT","10000")))
