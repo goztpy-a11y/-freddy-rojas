@@ -1688,7 +1688,7 @@ def report_module(module):
 def general_history():
     available=[key for key in MODULES if allowed(key)]
     if current_user().role=="auditoria":
-        available=list(dict.fromkeys(list(MODULES.keys())+["tickets_entrada","solicitudes","cheques","cuentas_pagar","cuentas_cobrar"]))
+        available=[key for key in dict.fromkeys(list(MODULES.keys())+["tickets_entrada","solicitudes","cheques","cuentas_pagar","cuentas_cobrar"]) if key!="proveedores"]
     q=request.args.get("q","").strip().casefold(); sector=request.args.get("sector",""); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
     items=Record.query.order_by(Record.created_at.desc()).all(); results=[]
     for r in items:
