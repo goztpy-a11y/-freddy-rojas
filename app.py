@@ -569,6 +569,7 @@ def index():
     quick_actions = []
     if u.role == "admin" or allowed("caja"):
         quick_actions += [
+            ("Registrar carga", url_for("module_page",module="tickets"), "Registrar una carga de materiales"),
             ("Proveedores y precios", url_for("proveedores"), "Consultar y actualizar precios"),
             ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
     if u.role == "admin" or allowed("estacion"):
@@ -654,7 +655,6 @@ def admin_section(section):
         ("Listado de proveedores", url_for("listado_proveedores"), "Consultar proveedores registrados"),
         ("Cuenta de proveedores", url_for("planillas"), "Planillas y movimientos"),
         ("Fletes", url_for("fletes"), "Control de fletes"),
-        ("Registrar carga", url_for("module_page",module="tickets"), "Registrar cargas de materiales y consultar el historial"),
         ("Solicitudes de pago", url_for("module_page",module="solicitudes"), "Solicitudes para autorización"),
         ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa"),
         ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica")]),
