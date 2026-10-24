@@ -666,6 +666,7 @@ def admin_section(section):
     groups = {
       "caja": ("Caja", "OPERACIONES FINANCIERAS", "Pagos, proveedores y movimientos diarios.", [
         ("Pagos diarios", url_for("pagos_diarios"), "Pagos y comprobantes"),
+        ("Salida de material", url_for("salida_material"), "Registrar camión, chofer, fecha, material y kg"),
         ("Préstamos", url_for("prestamos"), "Registro y seguimiento"),
         ("Proveedores y precios", url_for("proveedores"), "Registrar proveedor y precios por material"),
         ("Listado de proveedores", url_for("listado_proveedores"), "Consultar proveedores registrados"),
@@ -783,103 +784,35 @@ def module_page(module):
         {% if not items %}<form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label>{% if key=='moneda' %}<select name="moneda" required><option value="PYG">PYG - Guaraníes</option><option value="USD">USD - Dólares</option></select>{% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}<div style="align-self:end"><button class="btn">Crear cuenta central</button></div></form>{% else %}<p>La cuenta central ya está registrada. No se pueden crear cuentas adicionales.</p>{% endif %}</section>
         <section class="card"><h2>Cuenta central y saldo</h2><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Moneda</th><th>Saldo inicial</th><th>Saldo actual</th></tr>{% for a in items %}<tr><td>{{a.name or "Cuenta central"}}</td><td>{{a.bank or "—"}}</td><td>{{a.number or "—"}}</td><td>{{a.currency}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,items=items)
     if module == "inventario":
-        if request.method == "POST":
-            action=request.form.get("accion","").strip()
-            try:
-                material_id=int(request.form.get("material_id","0"))
-                mat=db.session.get(Material,material_id)
-                if not mat:
-                    flash("No se encontró el material seleccionado.")
-                    return redirect(url_for("module_page",module=module))
-                raw=request.form.get("cantidad","").strip().replace(",",".")
-                qty=Decimal(raw)
-                if not qty.is_finite() or qty < 0:
-                    raise InvalidOperation()
-                if action == "existente":
-                    # Rebase the initial quantity while retaining recorded entries/exits.
-                    rows=Record.query.filter_by(module="inventario").all()
-                    entered=Decimal("0"); exited=Decimal("0")
-                    for row in rows:
-                        try:
-                            movement=json.loads(row.data or "{}")
-                        except (ValueError,TypeError):
-                            continue
-                        if str(movement.get("material_id","")) != str(mat.id):
-                            continue
-                        amount=Decimal(str(movement.get("cantidad", "0")))
-                        if movement.get("tipo_movimiento") == "entrada": entered += amount
-                        elif movement.get("tipo_movimiento") == "salida": exited += amount
-                    if qty + entered < exited:
-                        flash("La cantidad inicial no puede dejar el stock por debajo de cero.")
-                        return redirect(url_for("module_page",module=module))
-                    mat.opening_stock=qty
-                    mat.stock=qty+entered-exited
-                    label="Cantidad inicial actualizada"
-                    detail=f"{mat.name}: existente {qty}; entradas {entered}; salidas {exited}; stock {mat.stock}"
-                    action_label="ajuste de cantidad inicial"
-                elif action in ("entrada","salida"):
-                    if qty <= 0:
-                        raise InvalidOperation()
-                    if action == "salida" and qty > Decimal(str(mat.stock or 0)):
-                        flash(f"No hay stock suficiente de {mat.name}. Disponible: {mat.stock} kg.")
-                        return redirect(url_for("module_page",module=module))
-                    if action == "entrada":
-                        mat.stock=Decimal(str(mat.stock or 0))+qty
-                        label="Entrada registrada"
-                        action_label="entrada de inventario"
-                    else:
-                        mat.stock=Decimal(str(mat.stock or 0))-qty
-                        label="Salida registrada"
-                        action_label="salida de inventario"
-                    detail=f"{mat.name}: {'+' if action == 'entrada' else '-'}{qty} kg; stock {mat.stock}"
-                else:
-                    flash("Seleccioná una acción válida.")
-                    return redirect(url_for("module_page",module=module))
-                data={"material":mat.name,"material_id":mat.id,"tipo_movimiento":action,
-                      "cantidad":str(qty),"cantidad_existente":str(mat.opening_stock),
-                      "cantidad_disponible":str(mat.stock)}
-                rec=Record(module="inventario",title=mat.name,data=json.dumps(data,ensure_ascii=False),
-                           status=label,created_by=current_user().id)
-                db.session.add(rec); db.session.flush()
-                log_action(action_label,"inventario",rec.id,detail)
-                db.session.commit()
-                flash(label+".")
-            except (InvalidOperation,ValueError,TypeError):
-                db.session.rollback()
-                flash("Ingresá una cantidad válida en kilogramos.")
-            return redirect(url_for("module_page",module=module))
         items=Material.query.order_by(Material.name).all()
         hist=Record.query.filter_by(module="inventario").order_by(Record.created_at.desc()).all()
         hist_parsed=[]
-        totals={}
-        for m in items:
-            totals[m.id]={"entrada":Decimal("0"),"salida":Decimal("0")}
+        totals={m.id:{"entrada":Decimal("0"),"salida":Decimal("0")} for m in items}
         for r in hist:
-            try:
-                data=json.loads(r.data or "{}")
-            except (ValueError,TypeError):
-                data={}
+            try: data=json.loads(r.data or "{}")
+            except (ValueError,TypeError): data={}
             mid=data.get("material_id")
-            if mid in totals and data.get("tipo_movimiento") in ("entrada","salida"):
-                try: totals[mid][data["tipo_movimiento"]]+=Decimal(str(data.get("cantidad","0")))
+            if mid in totals:
+                try:
+                    kind=data.get("tipo_movimiento")
+                    qty=Decimal(str(data.get("cantidad",data.get("cantidad_ingresada","0")) or 0))
+                    if kind=="entrada" or (not kind and data.get("origen") in ("ticket_entrada","pago_diario")):
+                        totals[mid]["entrada"]+=qty
+                    elif kind=="salida" or data.get("origen")=="salida_material":
+                        totals[mid]["salida"]+=qty
                 except (InvalidOperation,ValueError,TypeError): pass
             hist_parsed.append((r,data))
         return render_template_string(BASE+"""
         <section class="card inventory-list"><h2>Inventario de materiales</h2>
-        <p>Usá la fila de cada material ya registrado para cargar los kg existentes, registrar entradas o registrar salidas. El stock se actualiza automáticamente.</p>
+        <p>Las entradas se actualizan al registrar cargas/tickets en Caja y las salidas al registrar una salida de material en Caja. El stock se actualiza automáticamente.</p>
         <button class="btn" type="button" onclick="window.print()">Imprimir inventario</button>
         <table><tr><th>Material</th><th>Kg existentes</th><th>Entrada (kg)</th><th>Salida (kg)</th><th>Stock (kg)</th></tr>
-        {% for m in items %}<tr>
-        <td>{{m.name}}</td>
-        <td><form method="post" class="grid" style="min-width:130px;gap:5px"><input type="hidden" name="material_id" value="{{m.id}}"><input type="hidden" name="accion" value="existente"><input name="cantidad" type="number" min="0" step="0.001" value="{{m.opening_stock}}" required><button class="btn" type="submit">Guardar</button></form></td>
-        <td><form method="post" class="grid" style="min-width:125px;gap:5px"><input type="hidden" name="material_id" value="{{m.id}}"><input type="hidden" name="accion" value="entrada"><input name="cantidad" type="number" min="0.001" step="0.001" placeholder="Kg que entran" required><button class="btn" type="submit">Registrar</button></form><small>Total entradas: {{totals[m.id]["entrada"]}} kg</small></td>
-        <td><form method="post" class="grid" style="min-width:125px;gap:5px"><input type="hidden" name="material_id" value="{{m.id}}"><input type="hidden" name="accion" value="salida"><input name="cantidad" type="number" min="0.001" step="0.001" placeholder="Kg que salen" required><button class="btn" type="submit">Registrar</button></form><small>Total salidas: {{totals[m.id]["salida"]}} kg</small></td>
-        <td class="inventory-qty"><strong>{{m.stock}}</strong></td>
-        </tr>{% else %}<tr><td colspan="5">Todavía no hay materiales registrados en el módulo Materiales.</td></tr>{% endfor %}</table></section>
+        {% for m in items %}<tr><td>{{m.name}}</td><td>{{m.opening_stock}}</td><td>{{totals[m.id]["entrada"]}}</td><td>{{totals[m.id]["salida"]}}</td><td class="inventory-qty"><strong>{{m.stock}}</strong></td></tr>
+        {% else %}<tr><td colspan="5">Todavía no hay materiales registrados en el módulo Materiales.</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Historial de inventario</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
         <table><tr><th>Fecha/hora</th><th>Material</th><th>Movimiento</th><th>Cantidad (kg)</th><th>Stock resultante (kg)</th><th>Imprimir</th></tr>
         {% for r,d in hist_parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td>
-        <td>{% if d.get('tipo_movimiento')=='entrada' %}Entrada{% elif d.get('tipo_movimiento')=='salida' %}Salida{% elif d.get('tipo_movimiento')=='existente' %}Kg existentes{% else %}Registro anterior{% endif %}</td>
+        <td>{% if d.get('tipo_movimiento')=='entrada' or d.get('origen') in ('ticket_entrada','pago_diario') %}Entrada{% elif d.get('tipo_movimiento')=='salida' or d.get('origen')=='salida_material' %}Salida{% elif d.get('tipo_movimiento')=='existente' %}Kg existentes{% else %}Registro anterior{% endif %}</td>
         <td>{{d.get('cantidad',d.get('cantidad_ingresada',''))}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed,totals=totals)
     if module == "tickets":
         materials=Material.query.order_by(Material.name).all()
@@ -1734,6 +1667,7 @@ import features  # Registra los módulos financieros y de flota de El Toro S.A.
 import pagos_ui  # Sustituye la pantalla antigua por el formulario con materiales
 import pagos_save  # Guarda pagos y registra entradas de inventario
 import caja_tickets  # Separa el registro de tickets del historial de pagos
+import salidas_material  # Registra salidas de materiales desde Caja
 import materiales_report  # Informe de entradas y salidas de materiales
 
 if __name__ == "__main__":
