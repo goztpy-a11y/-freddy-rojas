@@ -197,8 +197,7 @@ def allowed(module):
     # La cuenta dedicada exclusivamente a Inventario ve solo los tres inventarios
     # y sus historiales. No puede usar ventas ni registrar servicios de gomería.
     inventory_only_modules = {"inventario", "repuestos", "movimientos_stock",
-                              "gomeria_inventario", "gomeria_movimientos",
-                              "gomeria_camiones"}
+                              "gomeria_inventario", "gomeria_movimientos"}
     if assigned == {"inventario"}:
         return module in inventory_only_modules
     required_area = MODULES.get(module, (None, module))[1]
