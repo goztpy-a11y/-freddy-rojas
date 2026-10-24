@@ -407,10 +407,10 @@ def combustible_stock():
     <div style="margin-top:16px"><a class="btn" href="#formulario-carga">⛽ Cargar combustible</a></div></section>
     <section class="card" id="formulario-carga"><h2>Cargar</h2><form method="post" action="{{url_for('cargar_combustible')}}" class="grid">
     <div><label>Nombre del chofer</label><input name="chofer" autocomplete="name" required maxlength="120"></div>
-    <div><label>Número de chapa del vehículo</label><input name="camion" required maxlength="40" placeholder="Ej.: ABC 123"></div>
+    <div><label>Chapa del camión o identificación de la maquinaria</label><input name="camion" required maxlength="80" placeholder="Ej.: ABC 123 o Excavadora 1"></div>
     <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" max="{{stock}}" step="0.01" required></div>
     <div style="align-self:end"><button type="submit">Guardar carga</button></div></form></section>
-    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Chapa del vehículo</th><th>Litros cargados</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
+    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Camión o maquinaria</th><th>Litros cargados</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
     """,stock=stock,charges=charges,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.post("/combustible-stock/cargar")
