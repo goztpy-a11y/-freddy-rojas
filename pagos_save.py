@@ -6,13 +6,28 @@ from features import _rows, _data, _can_caja
 
 def crear_pago_diario_materiales():
     _can_caja()
-    ticket=request.form.get("ticket","").strip()
+    source_ticket_id=request.form.get("source_ticket_id","").strip()
+    source_record=None
+    source_data={}
+    if source_ticket_id:
+        try:
+            source_record=db.session.get(Record,int(source_ticket_id))
+        except (ValueError,TypeError):
+            source_record=None
+        if not source_record or source_record.module!="tickets":
+            flash("No se encontró la carga registrada. No se guardó el pago.")
+            return redirect(url_for("pagos_diarios"))
+        source_data=_data(source_record)
+        ticket="CARGA-"+str(source_record.id)
+        persona=str(source_data.get("cliente","")).strip()
+    else:
+        ticket=request.form.get("ticket","").strip()
+        persona=request.form.get("persona","").strip()
     comp=request.form.get("comprobante","").strip()
-    persona=request.form.get("persona","").strip()
     fecha=request.form.get("fecha","").strip()
     medio=request.form.get("medio","").strip()
     if not ticket or not persona or not fecha or not medio:
-        flash("Completá el número de ticket, cliente/proveedor, fecha y medio de pago.")
+        flash("Completá el ticket, cliente/proveedor, fecha y medio de pago.")
         return redirect(url_for("pagos_diarios"))
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     first=_data(previous[0]) if previous else {}
@@ -21,7 +36,10 @@ def crear_pago_diario_materiales():
         flash("Ese ticket ya pertenece a otro cliente/proveedor.")
         return redirect(url_for("pagos_diarios"))
     try:
-        if existing:
+        if source_record:
+            lines=source_data.get("materiales",[])
+            total=Decimal(str(source_record.amount or source_data.get("total","0") or 0))
+        elif existing:
             lines=first.get("materiales",[])
             total=Decimal(str(first.get("total","0")))
         else:
@@ -69,6 +87,8 @@ def crear_pago_diario_materiales():
               "medio":medio,"cuenta":request.form.get("cuenta","").strip(),"cuenta_empresa":account.name if account else "",
               "company_account_id":account.id if account else None,"detalle":request.form.get("detalle","").strip(),
               "pagado_acumulado":str(paid+amount),"saldo":str(balance)}
+        if source_record:
+            data["ticket_origen_id"]=source_record.id
         payment=Record(module="pagos_diarios",title="Pago ticket "+ticket,data=json.dumps(data,ensure_ascii=False),
             amount=amount,status="Pagado" if balance==0 else "Pago parcial",company_account_id=account.id if account else None,created_by=current_user().id)
         db.session.add(payment)
@@ -78,7 +98,7 @@ def crear_pago_diario_materiales():
             log_action("descontar pago de cuenta bancaria","pagos_diarios",payment.id,
                 "Cuenta "+account.name+"; ticket "+ticket+"; importe descontado "+str(amount)+"; saldo bancario "+str(account.balance))
         log_action("registrar pago diario","pagos_diarios",payment.id,"Ticket "+ticket+"; "+persona+"; pago "+str(amount))
-        if not existing:
+        if not existing and not source_record:
             for line in lines:
                 mat=db.session.get(Material,int(line["material_id"]))
                 kg=Decimal(str(line["kg"]))
