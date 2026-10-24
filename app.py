@@ -48,18 +48,18 @@ MODULES = {
  "clientes": ("Proveedores", "caja", [
   ("nombre","Nombre / razón social","text",True),("documento","RUC / documento","text",False),
   ("telefono","Teléfono","text",False),("direccion","Dirección","text",False),
-  ("datos_bancarios","Datos bancarios del cliente (no cuenta de la empresa)","text",False)]),
+  ("datos_bancarios","Datos bancarios del proveedor (no cuenta de la empresa)","text",False)]),
  "materiales": ("Materiales", "admin", [("nombre","Nombre del material","text",True)]),
  "inventario": ("Inventario de materiales", "inventario", [
   ("nombre","Nombre del material","text",True),("cantidad","Cantidad disponible","number",True)]),
  "tickets": ("Registrar carga", "caja", [
-  ("cliente","Cliente / proveedor","text",True),("material","Material","text",True),
+  ("cliente","Proveedor","text",True),("material","Material","text",True),
   ("cantidad","Cantidad / kg","number",True),("precio","Precio aplicado (automático al elegir material)","number",False),
-  ("total","Total calculado","number",False),("cuenta_cliente","Cuenta bancaria del cliente elegida para el pago","text",False),
+  ("total","Total calculado","number",False),("cuenta_cliente","Cuenta bancaria del proveedor elegida para el pago","text",False),
   ("observaciones","Observaciones","text",False)]),
  "solicitudes": ("Solicitudes de pago", "caja", [
-  ("cliente","Cliente / proveedor","text",True),("concepto","Concepto / ticket relacionado","text",True),
-  ("importe","Importe solicitado","number",True),("cuenta_cliente","Cuenta bancaria del cliente","text",True),
+  ("cliente","Proveedor","text",True),("concepto","Concepto / ticket relacionado","text",True),
+  ("importe","Importe solicitado","number",True),("cuenta_cliente","Cuenta bancaria del proveedor","text",True),
   ("comprobante","Referencia del comprobante / archivo pendiente","text",False),("observaciones","Observaciones","text",False)]),
  "cuentas_empresa": ("Cuentas bancarias de El Toro S.A.", "admin", [
   ("nombre","Nombre de la cuenta (opcional)","text",False),("banco","Banco (opcional)","text",False),("numero","Número / alias de cuenta (opcional)","text",False),
@@ -74,7 +74,7 @@ MODULES = {
   ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
-  ("cliente","Cliente","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
+  ("cliente","Proveedor","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
   ("vencimiento","Vencimiento","date",False),("estado","Estado / seguimiento","select",False)]),
  "cheques": ("Cheques adelantados", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("numero","Número de cheque","text",True),("importe","Importe","number",True),
@@ -936,11 +936,11 @@ def module_page(module):
         <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required>
         <div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
         <div><label>N.º de ticket <span style="color:#c00">*</span></label><input name="numero_ticket" type="text" autocomplete="off" placeholder="Ingresá el número de ticket" required></div>
-        <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
+        <div><label>Cuenta bancaria del proveedor (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
         <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Monto a pagar por este material (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
-        <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar proveedor, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
+        <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
         const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
@@ -962,8 +962,8 @@ def module_page(module):
             const material=row.querySelector('[name="material"]').value,field=row.querySelector('[name="precio"]'),info=ticketMaterials[material];
             if(changedRow===row){field.value='';field.dataset.autofilled='';field.dataset.pricekey='';}
             const assigned=vendor&&info&&(vendor.precios||{})[String(info.id)],priceKey=key+'|'+(info?info.id:'');
-            if(assigned!==undefined&&assigned!==null&&String(assigned).trim()!==''){field.value=String(assigned);field.readOnly=true;field.title='Precio guardado para este cliente y material';field.dataset.autofilled='yes';field.dataset.pricekey=priceKey;}
-            else {if(field.dataset.autofilled==='yes'||(field.dataset.pricekey&&field.dataset.pricekey!==priceKey))field.value='';field.readOnly=false;field.title='Este material no tiene precio guardado para el cliente; ingresá el precio manualmente';field.dataset.autofilled='';field.dataset.pricekey=priceKey;}
+            if(assigned!==undefined&&assigned!==null&&String(assigned).trim()!==''){field.value=String(assigned);field.readOnly=true;field.title='Precio guardado para este proveedor y material';field.dataset.autofilled='yes';field.dataset.pricekey=priceKey;}
+            else {if(field.dataset.autofilled==='yes'||(field.dataset.pricekey&&field.dataset.pricekey!==priceKey))field.value='';field.readOnly=false;field.title='Este material no tiene precio guardado para el proveedor; ingresá el precio manualmente';field.dataset.autofilled='';field.dataset.pricekey=priceKey;}
             updateLineTotal(row);
           });
         }
@@ -1013,11 +1013,11 @@ def module_page(module):
         if q: logs=[x for x in logs if q in (x.action+" "+x.module+" "+x.detail).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>Auditoría centralizada</h2><form method="get" class="grid">
-        <div><label>Buscar cualquier dato</label><input name="q" value="{{q}}" placeholder="Pago a cliente, proveedor, concepto..."></div>
+        <div><label>Buscar cualquier dato</label><input name="q" value="{{q}}" placeholder="Pago a proveedor, concepto..."></div>
         <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
         <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module='auditoria')}}">Limpiar</a></div></form>
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
-        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{% if r.module=="pagos_diarios" %}<b>N.º de ticket:</b> {{d.get('ticket') or (r.title.split()[-1] if r.title else '—')}}<br><b>Cliente:</b> {{d.get('persona') or d.get('cliente') or '—'}}<br><b>Monto:</b> {{d.get('total') or r.amount}}<br><b>Método de pago:</b> {{d.get('medio') or '—'}}{% else %}<b>Operación:</b> {{r.title}}<br><b>Monto:</b> {{d.get('total') or r.amount}}{% if d.get('medio') %}<br><b>Método de pago:</b> {{d.get('medio')}}{% endif %}{% endif %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{% if r.module=="pagos_diarios" %}<b>N.º de ticket:</b> {{d.get('ticket') or (r.title.split()[-1] if r.title else '—')}}<br><b>Proveedor:</b> {{d.get('persona') or d.get('cliente') or '—'}}<br><b>Monto:</b> {{d.get('total') or r.amount}}<br><b>Método de pago:</b> {{d.get('medio') or '—'}}{% else %}<b>Operación:</b> {{r.title}}<br><b>Monto:</b> {{d.get('total') or r.amount}}{% if d.get('medio') %}<br><b>Método de pago:</b> {{d.get('medio')}}{% endif %}{% endif %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
 </main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
     if module == "repuestos":
         if request.method=="POST":
@@ -1247,7 +1247,7 @@ def module_page(module):
         <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
         <table><tr><th>Fecha</th><th>Registro</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
         {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
+        <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / proveedor</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
         {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}} · {{local_time(p.created_at).strftime('%H:%M:%S')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if request.method == "POST":
@@ -1395,7 +1395,7 @@ def approvals():
         parsed.append((r,d,max(Decimal("0"),Decimal(str(r.amount))-paid)))
     return render_template_string(BASE+"""
     <section class="card"><h2>Autorización requerida</h2><p class="muted">Ordenado por llegada. Autorizar no descuenta el saldo de la empresa; el saldo cambia únicamente al registrar el pago ejecutado.</p>
-    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Cliente / concepto</th><th>Importe</th><th>Cuenta del cliente</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
+    {% if parsed %}<table><tr><th>Fecha/hora</th><th>Proveedor / concepto</th><th>Importe</th><th>Cuenta del proveedor</th><th>Estado</th><th>Acción</th></tr>{% for r,d,remaining in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('cliente','')}}<br>{{d.get('concepto','')}}</td><td>{{r.amount}}{% if remaining<r.amount %}<br><small>Saldo pendiente: Gs. {{remaining}}</small>{% endif %}</td><td>{{d.get('cuenta_cliente','')}}</td><td>{{r.status}}{% if d.get('motivo_rechazo') %}<br><span class="danger">{{d.get('motivo_rechazo')}}</span>{% endif %}</td><td>
     {% if user.role=='admin' and r.status=='Pendiente de autorización' %}<form method="post" action="{{url_for('decide_payment',rid=r.id)}}"><button class="btn" name="decision" value="aprobar">Autorizar</button> <button class="btn" name="decision" value="rechazar">Rechazar</button><input name="reason" placeholder="Motivo si rechaza"></form>{% elif r.status in ('Autorizado','Pago parcial') and (user.role=='admin' or allowed('tesoreria')) %}<form method="post" action="{{url_for('pay_payment',rid=r.id)}}"><label>Importe a pagar ahora (Gs.)</label><input name="importe" type="number" min="0.01" max="{{remaining}}" step="0.01" value="{{remaining}}" required><label>Cuenta de empresa</label><select name="account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · {{a.currency}} · saldo {{a.balance}}</option>{% endfor %}</select><button class="btn">Registrar pago total o parcial</button></form>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>No hay solicitudes.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Autorizaciones",parsed=parsed,accounts=CompanyAccount.query.filter_by(active=True).all())
 
 @app.post("/autorizaciones/<int:rid>/decidir")
@@ -1783,7 +1783,7 @@ import pagos_save  # Guarda pagos y registra entradas de inventario
 import caja_tickets  # Separa el registro de tickets del historial de pagos
 import salidas_material  # Registra salidas de materiales desde Caja
 import materiales_report  # Informe de entradas y salidas de materiales
-import gestion_admin  # Administración de deudas de clientes y control ampliado de flota
+import gestion_admin  # Administración de deudas de proveedores y control ampliado de flota
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT","10000")))
