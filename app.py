@@ -966,6 +966,8 @@ def module_page(module):
         modules_allowed=set(MODULES.keys())
         all_records=Record.query.order_by(Record.created_at.desc()).all(); results=[]
         for rec in all_records:
+            # Los registros de alta/edición de proveedores y precios no son movimientos financieros.
+            if rec.module == "proveedores": continue
             if rec.module not in modules_allowed and rec.module not in {"pagos_diarios","prestamos_pagos","pagos_cuentas","combustible_camion","gomeria_camiones","fletes","planillas","flota","mantenimiento","gastos"}: continue
             d=json.loads(rec.data or "{}"); hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
             if q and q not in hay: continue
