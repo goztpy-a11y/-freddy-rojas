@@ -80,7 +80,7 @@ def registrar_ticket():
     return _page("Registrar ticket", """
     <section class="card"><h2>Registrar ticket</h2><form method="post" class="grid" id="ticket-form">
     <div><label>N.º de ticket</label><input name="ticket" required></div>
-    <div><label>Cliente / proveedor</label><input name="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div>
+    <div><label>Proveedor</label><input name="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div>
     <div><label>Fecha del ticket</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div style="grid-column:1/-1"><h3>Materiales</h3><table><tr><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Importe</th><th></th></tr><tbody id="material-lines">
     {% for n in range(2) %}<tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr>{% endfor %}</tbody></table>
