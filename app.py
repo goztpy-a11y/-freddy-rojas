@@ -818,19 +818,23 @@ def module_page(module):
                     elif kind=="salida" or data.get("origen")=="salida_material":
                         totals[mid]["salida"]+=qty
                 except (InvalidOperation,ValueError,TypeError): pass
-            if data.get("tipo_movimiento")=="salida" or data.get("origen")=="salida_material":
+            kind=data.get("tipo_movimiento")
+            origin=data.get("origen")
+            if kind in ("entrada","salida") or origin in ("ticket_entrada","pago_diario","salida_material"):
+                if not kind:
+                    kind="salida" if origin=="salida_material" else "entrada"
+                data["_movimiento_visible"]=kind
                 hist_parsed.append((r,data))
         return render_template_string(BASE+"""
         <section class="card inventory-list"><h2>Inventario de materiales</h2>
-        <p>Agregá el stock inicial por material. Las entradas y salidas de Caja se reflejan automáticamente en sus columnas.</p>
+        <p>Agregá stock por material. Las entradas y salidas de Caja se reflejan automáticamente.</p>
         <button class="btn" type="button" onclick="window.print()">Imprimir inventario</button>
-        <table><tr><th>Material</th><th>Agregar stock (kg)</th><th>Kg existentes</th><th>Entrada (kg)</th><th>Salida (kg)</th><th>Stock actual (kg)</th></tr>
-        {% for m in items %}<tr><td>{{m.name}}</td><td><form method="post" class="actions" style="min-width:180px"><input type="hidden" name="accion" value="agregar_stock"><input type="hidden" name="material_id" value="{{m.id}}"><input name="cantidad" type="number" min="0.001" step="0.001" placeholder="Cantidad en kg" required style="max-width:125px"><button class="btn">Agregar</button></form></td><td>{{m.opening_stock}}</td><td>{{totals[m.id]["entrada"]}}</td><td>{{totals[m.id]["salida"]}}</td><td class="inventory-qty"><strong>{{m.stock}}</strong></td></tr>
-        {% else %}<tr><td colspan="6">Todavía no hay materiales registrados en el módulo Materiales.</td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Historial de salidas de material</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
-        <table><tr><th>Fecha/hora</th><th>Material</th><th>Movimiento</th><th>Cantidad (kg)</th><th>Stock resultante (kg)</th><th>Imprimir</th></tr>
-        {% for r,d in hist_parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>Salida</td>
-        <td>{{d.get('cantidad',d.get('cantidad_ingresada',''))}}</td><td>{{d.get('cantidad_disponible','')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% else %}<tr><td colspan="6">Todavía no hay salidas registradas.</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed,totals=totals)
+        <table><tr><th>Material</th><th>Agregar stock (kg)</th><th>Entrada (kg)</th><th>Salida (kg)</th><th>Stock actual (kg)</th></tr>
+        {% for m in items %}<tr><td>{{m.name}}</td><td><form method="post" class="actions" style="min-width:180px"><input type="hidden" name="accion" value="agregar_stock"><input type="hidden" name="material_id" value="{{m.id}}"><input name="cantidad" type="number" min="0.001" step="0.001" placeholder="Cantidad en kg" required style="max-width:125px"><button class="btn">Agregar</button></form></td><td>{{totals[m.id]["entrada"]}}</td><td>{{totals[m.id]["salida"]}}</td><td class="inventory-qty"><strong>{{m.stock}}</strong></td></tr>
+        {% else %}<tr><td colspan="5">Todavía no hay materiales registrados en el módulo Materiales.</td></tr>{% endfor %}</table></section>
+        <section class="card"><h2>Historial de movimientos de material</h2><button class="btn" type="button" onclick="window.print()">Imprimir historial</button>
+        <table><tr><th>Fecha y hora</th><th>Material</th><th>Movimiento</th><th>Cantidad (kg)</th></tr>
+        {% for r,d in hist_parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('material',r.title)}}</td><td>{{'Salida' if d.get('_movimiento_visible')=='salida' else 'Entrada'}}</td><td>{{d.get('cantidad',d.get('cantidad_ingresada',''))}}</td></tr>{% else %}<tr><td colspan="4">Todavía no hay entradas ni salidas registradas.</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,items=items,hist_parsed=hist_parsed,totals=totals)
     if module == "tickets":
         materials=Material.query.order_by(Material.name).all()
         vendor_rows=Record.query.filter_by(module="proveedores").all()
