@@ -193,8 +193,14 @@ def allowed(module):
         return False
     if user.role == "admin":
         return True
-    # Las cuentas normales acceden solo a los módulos de las áreas asignadas.
     assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()}
+    # La cuenta dedicada exclusivamente a Inventario ve solo los tres inventarios
+    # y sus historiales. No puede usar ventas ni registrar servicios de gomería.
+    inventory_only_modules = {"inventario", "repuestos", "movimientos_stock",
+                              "gomeria_inventario", "gomeria_movimientos",
+                              "gomeria_camiones"}
+    if assigned == {"inventario"}:
+        return module in inventory_only_modules
     required_area = MODULES.get(module, (None, module))[1]
     return required_area in assigned
 
@@ -484,7 +490,9 @@ footer{display:block!important;color:#8b99aa}
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>{{ company_settings.get('company_name', 'EL TORO S.A.') }}</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
-{% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('inventario') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a><a href="{{url_for('general_history')}}">Historial</a>{% endif %}
+{% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a>{% endif %}
+{% if user.role=='admin' or allowed('inventario') %}<a href="{{url_for('general_history')}}">Historial de inventario</a>{% endif %}
+{% if user.role!='admin' and (user.areas or '').split(',')|map('trim')|list == ['inventario'] %}<a href="{{url_for('admin_section',section='inventario')}}">Inventarios</a>{% endif %}
 {% if user.role=='admin' %}
 <a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
@@ -646,7 +654,9 @@ def index():
 @login_required
 def admin_section(section):
     if current_user().role != "admin":
-        abort(403)
+        assigned = {area.strip() for area in (current_user().areas or "").split(",") if area.strip()}
+        if section != "inventario" or assigned != {"inventario"}:
+            abort(403)
     groups = {
       "caja": ("Caja", "OPERACIONES FINANCIERAS", "Pagos, proveedores y movimientos diarios.", [
         ("Pagos diarios", url_for("pagos_diarios"), "Pagos y comprobantes"),
@@ -665,12 +675,11 @@ def admin_section(section):
         ("Servicio de gomería", url_for("servicios_gomeria"), "Registrar trabajo, camión y materiales utilizados"),
         ("Inventario de materiales", url_for("gomeria_inventario"), "Controlar entradas, existencias y salidas"),
         ("Movimientos de materiales", url_for("gomeria_movimientos"), "Consultar materiales descontados por servicio")]),
-      "inventario": ("Inventario", "STOCK Y MATERIALES", "Materiales, repuestos, ventas y movimientos.", [
-        ("Materiales y precios", url_for("module_page",module="materiales"), "Catálogo de materiales"),
-        ("Inventario de materiales", url_for("module_page",module="inventario"), "Entradas y existencias"),
-        ("Ventas", url_for("module_page",module="ventas"), "Ventas y salidas"),
-        ("Repuestos hidráulicos", url_for("module_page",module="repuestos"), "Stock de repuestos"),
-        ("Movimientos de stock", url_for("module_page",module="movimientos_stock"), "Entradas, usos y salidas")]),
+      "inventario": ("Inventario", "STOCK Y MATERIALES", "Consulta de existencias e historiales de materiales, repuestos hidráulicos y gomería.", [
+        ("Inventario de materiales", url_for("module_page",module="inventario"), "Consultar existencias y movimientos de materiales"),
+        ("Inventario de repuestos hidráulicos", url_for("module_page",module="repuestos"), "Consultar stock de repuestos y su historial"),
+        ("Inventario de gomería", url_for("gomeria_inventario"), "Consultar materiales, existencias y movimientos de gomería"),
+        ("Historial de inventario", url_for("general_history"), "Consultar e imprimir los movimientos de los inventarios autorizados")]),
       "tesoreria": ("Tesorería", "CUENTAS Y PAGOS", "Cuentas por pagar y cobrar, cheques y autorizaciones.", [
         ("Cuentas por pagar", url_for("module_page",module="cuentas_pagar"), "Obligaciones y vencimientos"),
         ("Cuentas por cobrar", url_for("module_page",module="cuentas_cobrar"), "Cobros y seguimiento"),
