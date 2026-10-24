@@ -361,13 +361,39 @@ def editar_proveedor(rid):
 @login_required
 def movimiento_proveedor(nombre):
     _can_caja()
-    rows=[r for r in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if nombre.casefold() in (r.title+" "+r.data).casefold()]
+    supplier=next((d for r,d in [(x,_data(x)) for x in _rows("proveedores")] if (d.get("nombre") or "").strip().casefold()==nombre.strip().casefold()),None)
+    if not supplier: abort(404)
     month=request.args.get("mes",paraguay_now().strftime("%Y-%m"))
-    rows=[r for r in rows if local_time(r.created_at).strftime("%Y-%m")==month]
+    candidates=_rows("tickets")+_rows("pagos_diarios")+_rows("planillas")
+    rows=[]
+    for rec in candidates:
+        d=_data(rec)
+        if local_time(rec.created_at).strftime("%Y-%m")!=month: continue
+        owner=str(d.get("cliente") or d.get("persona") or d.get("proveedor") or "").strip()
+        if owner.casefold()!=nombre.strip().casefold(): continue
+        if rec.module=="pagos_diarios" and d.get("ticket_origen_id"): continue
+        rows.append((rec,d))
+    material_totals={}
+    for rec,d in rows:
+        if rec.module not in ("tickets","pagos_diarios"): continue
+        for line in (d.get("materiales",[]) or []):
+            material=str(line.get("material") or line.get("nombre_material") or "").strip()
+            qty=line.get("cantidad",line.get("kg",line.get("quilaje","0")))
+            if not material: continue
+            try: qty=Decimal(str(qty or "0").replace(",","."))
+            except (InvalidOperation,ValueError): continue
+            if qty<=0: continue
+            if material not in material_totals: material_totals[material]={"kg":Decimal("0"),"count":0}
+            material_totals[material]["kg"]+=qty
+            material_totals[material]["count"]+=1
+    material_summary=[{"name":name,"kg":vals["kg"].quantize(Decimal("0.001")),"count":vals["count"]} for name,vals in sorted(material_totals.items(),key=lambda x:x[0].casefold())]
+    rows.sort(key=lambda pair:pair[0].created_at,reverse=True)
     return _page("Movimiento proveedor", """
-    <section class="card"><h2>Movimiento de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
-    <table><tr><th>Fecha</th><th>Sector</th><th>Operación</th><th>Detalle</th><th>Monto</th></tr>{% for r in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.data}}</td><td>{{r.amount}}</td></tr>{% endfor %}</table></section>
-    """,nombre=nombre,month=month,rows=rows)
+    <section class="card"><h2>Movimientos de {{nombre}}</h2><form class="actions"><label>Mes</label><input type="month" name="mes" value="{{month}}"><button>Consultar</button><button type="button" onclick="window.print()">Imprimir corte</button></form>
+    <h3>Listado por material y kilaje</h3><div style="overflow-x:auto"><table><tr><th>Material</th><th>Kilaje total (kg)</th><th>Movimientos</th></tr>{% for item in material_summary %}<tr><td>{{item.name}}</td><td>{{item.kg}}</td><td>{{item.count}}</td></tr>{% else %}<tr><td colspan="3">No hay kilajes registrados para este proveedor en el mes seleccionado.</td></tr>{% endfor %}</table></div>
+    <h3>Detalle de movimientos</h3><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Materiales y kilajes</th><th>Monto (Gs.)</th><th>Ver</th></tr>{% for r,d in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.get('material',line.get('nombre_material',''))}} · {{line.get('cantidad',line.get('kg',line.get('quilaje','')))}} kg<br>{% else %}—{% endfor %}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver registro</a></td></tr>{% else %}<tr><td colspan="6">No se encontraron movimientos para este proveedor en el mes seleccionado.</td></tr>{% endfor %}</table></div></section>
+    """,nombre=nombre,month=month,rows=rows,material_summary=material_summary)
+
 
 @app.route("/planillas",methods=["GET","POST"])
 @login_required
