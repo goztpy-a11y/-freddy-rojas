@@ -509,7 +509,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('servicios_gomeria')}}">Servicio de gomería</a><a href="{{url_for('gomeria_inventario')}}">Inventario de materiales</a><a href="{{url_for('gomeria_movimientos')}}">Movimientos de materiales</a>{% endif %}
-{% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
+{% if allowed('auditoria') %}<a href="{{url_for('admin_section',section='auditoria')}}">Auditoría</a>{% endif %}
 {% for key,meta in MODULES.items() %}{% if key not in ['tickets','pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','gomeria','gomeria_servicios','gomeria_inventario','gomeria_movimientos','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
@@ -594,7 +594,7 @@ def index():
             ("Informes", url_for("reports"), "Consultar e imprimir informes"),
             ("Usuarios", url_for("users"), "Administrar accesos y permisos")]
     elif allowed("auditoria"):
-        quick_actions.append(("Auditoría de pagos", url_for("auditoria_pagos"), "Revisar operaciones"))
+        quick_actions.append(("Auditoría", url_for("admin_section",section="auditoria"), "Informes, movimientos de proveedores e historial"))
     paraguay_hour = datetime.now(ZoneInfo("America/Asuncion")).hour
     greeting = "Buenas noches" if paraguay_hour >= 19 or paraguay_hour < 5 else ("Buenos días" if paraguay_hour < 12 else "Buenas tardes")
     return render_template_string(BASE + """
@@ -661,7 +661,9 @@ def index():
 def admin_section(section):
     if current_user().role != "admin":
         assigned = {area.strip() for area in (current_user().areas or "").split(",") if area.strip()}
-        if section != "inventario" or assigned != {"inventario"}:
+        if section == "auditoria" and (current_user().role == "auditoria" or allowed("auditoria")):
+            pass
+        elif section != "inventario" or assigned != {"inventario"}:
             abort(403)
     groups = {
       "caja": ("Caja", "OPERACIONES FINANCIERAS", "Pagos, proveedores y movimientos diarios.", [
