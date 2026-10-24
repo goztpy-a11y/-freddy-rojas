@@ -42,13 +42,13 @@ def crear_pago_diario_materiales():
     fecha=request.form.get("fecha","").strip()
     medio=request.form.get("medio","").strip()
     if not ticket or not persona or not fecha or not medio:
-        flash("Completá el ticket, cliente/proveedor, fecha y medio de pago.")
+        flash("Completá el ticket, proveedor, fecha y medio de pago.")
         return redirect(url_for("pagos_diarios"))
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     first=_data(previous[0]) if previous else {}
     existing=bool(previous)
     if existing and first.get("persona","").strip().casefold()!=persona.casefold():
-        flash("Ese ticket ya pertenece a otro cliente/proveedor.")
+        flash("Ese ticket ya pertenece a otro proveedor.")
         return redirect(url_for("pagos_diarios"))
     try:
         if source_record:
