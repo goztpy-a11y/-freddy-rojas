@@ -119,16 +119,26 @@ def pagos_diarios():
         remaining=max(Decimal("0"),total-paid).quantize(Decimal("0.01"))
         rows.append((r,d,paid.quantize(Decimal("0.01")),remaining))
     account=_central_account()
-    legacy={}
+    legacy_groups={}
     for p in payments:
         d=_data(p)
         if d.get("ticket_entrada_id"): continue
         ticket=str(d.get("ticket","")).strip()
         if not ticket: continue
         k=ticket.casefold()
-        if k not in legacy: legacy[k]={"ticket":ticket,"persona":d.get("persona",""),"total":d.get("total","0"),"pagado":Decimal("0"),"fecha":d.get("fecha","")}
-        legacy[k]["pagado"]+=Decimal(str(p.amount or 0))
-    legacy_rows=list(legacy.values())
+        if k not in legacy_groups:
+            legacy_groups[k]={"ticket":ticket,"persona":d.get("persona",""),"total":Decimal(str(d.get("total","0") or 0)),"pagado":Decimal("0"),"fecha":d.get("fecha","")}
+        legacy_groups[k]["pagado"]+=Decimal(str(p.amount or 0))
+    legacy_rows=[]
+    for p in payments:
+        d=_data(p)
+        if d.get("ticket_entrada_id") or not str(d.get("ticket","")).strip(): continue
+        group=legacy_groups.get(str(d.get("ticket","")).strip().casefold(),{})
+        total=Decimal(str(group.get("total",0) or 0))
+        paid=Decimal(str(group.get("pagado",0) or 0))
+        legacy_rows.append({"id":p.id,"fecha":d.get("fecha",""),"ticket":d.get("ticket",""),"persona":d.get("persona",""),
+            "total":str(total),"importe":str(p.amount or 0),"pagado":str(paid),"saldo":str(max(Decimal("0"),total-paid)),
+            "estado":"Pagado" if total<=paid else "Historial anterior"})
     payment_history=[]
     for p in payments:
         d=_data(p)
@@ -141,10 +151,10 @@ def pagos_diarios():
     <form method="get" class="grid"><div><label>Buscar ticket o proveedor</label><input name="q" value="{{q}}"></div><div><label>Mes del historial</label><input name="mes" type="month" value="{{month}}"></div><div style="align-self:end"><button>Consultar</button><a class="btn" href="{{url_for('pagos_diarios')}}">Limpiar</a></div></form>
     <table><tr><th>Fecha del ticket</th><th>Registrado el</th><th>Ticket</th><th>Proveedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Registrar pago</th></tr>
     {% for r,d,paid,remaining in rows %}<tr><td>{{d.get('_display_fecha','')}}</td><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('_display_ticket','')}}</td><td>{{d.get('_display_persona','')}}</td><td>{{r.amount or d.get('total','0')}}</td><td>{{paid}}</td><td>{{remaining}}</td><td>{{'Pagado' if remaining==0 else 'Pendiente' if paid==0 else 'Pago parcial'}}</td><td>{% if remaining>0 %}<form method="post" action="{{url_for('pagar_ticket',rid=r.id)}}"><input name="importe" type="number" min="0.01" step="0.01" value="{{remaining}}" required><select name="medio" required><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select><input name="comprobante" placeholder="N.º comprobante (opcional)"><button {% if not account %}disabled{% endif %}>Marcar pagado / registrar monto</button></form>{% else %}Pagado{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay tickets registrados.</td></tr>{% endfor %}</table></section>
-    <section class="card"><h2>Historial de pagos registrados</h2><table><tr><th>Fecha y hora del pago</th><th>Ticket</th><th>Proveedor</th><th>Medio</th><th>Importe pagado</th><th>Estado</th><th>Comprobante</th></tr>
-    {% for p,d in payment_history %}<tr><td>{{local_time(p.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('medio','')}}</td><td>{{p.amount}}</td><td>{{p.status}}</td><td>{{d.get('comprobante','')}}</td></tr>{% else %}<tr><td colspan="7">No hay pagos registrados para ese mes.</td></tr>{% endfor %}</table></section>
-    <section class="card"><h2>Historial de pagos anteriores</h2><table><tr><th>Fecha</th><th>Ticket</th><th>Proveedor</th><th>Total ticket</th><th>Importe pagado</th><th>Saldo según registro</th><th>Estado</th></tr>
-    {% for d in legacy_rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{d.get('pagado')}}</td><td>{{[0, (d.get('total','0')|float - d.get('pagado',0)|float)]|max}}</td><td>{{'Pagado' if d.get('total','0')|float <= d.get('pagado',0)|float else 'Historial anterior'}}</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de pagos registrados</h2><table><tr><th>Fecha y hora del pago</th><th>Ticket</th><th>Proveedor</th><th>Medio</th><th>Importe pagado</th><th>Estado</th><th>Comprobante</th><th>Acción</th></tr>
+    {% for p,d in payment_history %}<tr><td>{{local_time(p.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('medio','')}}</td><td>{{p.amount}}</td><td>{{p.status}}</td><td>{{d.get('comprobante','')}}</td><td><form method="post" action="{{url_for('eliminar_pago_ticket',pid=p.id)}}" onsubmit="return confirm('¿Eliminar este pago y devolver Gs. {{p.amount}} a la cuenta bancaria de origen?');"><button class="danger">Eliminar</button></form></td></tr>{% else %}<tr><td colspan="8">No hay pagos registrados para ese mes.</td></tr>{% endfor %}</table></section>
+    <section class="card"><h2>Historial de pagos anteriores</h2><p>Los importes son pagos individuales. Al eliminar uno, se recalcula el saldo del ticket.</p><table><tr><th>Fecha</th><th>Ticket</th><th>Proveedor</th><th>Total ticket</th><th>Este pago</th><th>Total pagado del ticket</th><th>Saldo según registro</th><th>Estado</th><th>Acción</th></tr>
+    {% for d in legacy_rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('pagado')}}</td><td>{{d.get('saldo')}}</td><td>{{d.get('estado')}}</td><td><form method="post" action="{{url_for('eliminar_pago_ticket',pid=d.id)}}" onsubmit="return confirm('¿Eliminar este pago y devolver el importe a la cuenta bancaria de origen?');"><button class="danger">Eliminar</button></form></td></tr>{% else %}<tr><td colspan="9">No hay pagos anteriores.</td></tr>{% endfor %}</table></section>
     """,rows=rows,legacy_rows=legacy_rows,payment_history=payment_history,q=q,month=month,account=account,local_time=local_time)
 
 def pagar_ticket(rid):
@@ -197,4 +207,57 @@ def pagar_ticket(rid):
 app.add_url_rule("/registrar-ticket", endpoint="registrar_ticket", view_func=registrar_ticket, methods=["GET","POST"])
 app.add_url_rule("/pagos", endpoint="pagos", view_func=pagos_diarios, methods=["GET"])
 app.add_url_rule("/pagos/<int:rid>/pagar", endpoint="pagar_ticket", view_func=pagar_ticket, methods=["POST"])
+def eliminar_pago_ticket(pid):
+    _can_caja()
+    payment=db.get_or_404(Record,pid)
+    if payment.module!="pagos_diarios": abort(404)
+    data=_data(payment)
+    amount=Decimal(str(payment.amount or data.get("importe") or 0))
+    # Devolver el dinero exactamente a la cuenta que recibió el descuento original.
+    account_id=payment.company_account_id or data.get("company_account_id")
+    account=db.session.get(CompanyAccount,int(account_id)) if account_id else None
+    if not account:
+        flash("No se pudo identificar la cuenta bancaria original. No se eliminó el pago ni se modificó el saldo.")
+        return redirect(url_for("pagos_diarios"))
+    ticket_id=data.get("ticket_entrada_id") or data.get("ticket_origen_id")
+    ticket=None
+    if ticket_id:
+        candidate=db.session.get(Record,int(ticket_id))
+        if candidate and candidate.module in ("tickets_entrada","tickets"): ticket=candidate
+    if ticket is None:
+        ticket_number=str(data.get("ticket","")).strip().casefold()
+        for candidate in Record.query.filter(Record.module.in_(["tickets_entrada","tickets"])).all():
+            cd=_data(candidate)
+            number=str(cd.get("ticket") or cd.get("numero_ticket") or cd.get("nro_ticket") or "").strip().casefold()
+            if number and number==ticket_number:
+                ticket=candidate
+                break
+    account.balance=Decimal(str(account.balance or 0))+amount
+    if ticket:
+        td=_data(ticket)
+        ticket_number=str(td.get("ticket") or td.get("numero_ticket") or td.get("nro_ticket") or data.get("ticket","")).strip()
+        remaining_payments=[]
+        for other in Record.query.filter_by(module="pagos_diarios").all():
+            if other.id==payment.id: continue
+            od=_data(other)
+            linked=(str(od.get("ticket_entrada_id",""))==str(ticket.id) or
+                    str(od.get("ticket_origen_id",""))==str(ticket.id) or
+                    str(od.get("ticket","")).strip().casefold()==ticket_number.casefold())
+            if linked: remaining_payments.append(other)
+        paid=sum((Decimal(str(other.amount or 0)) for other in remaining_payments),Decimal("0"))
+        total=Decimal(str(ticket.amount or td.get("total","0") or 0))
+        balance=max(Decimal("0"),total-paid).quantize(Decimal("0.01"))
+        td["saldo"]=str(balance); td["pagado_acumulado"]=str(paid.quantize(Decimal("0.01")))
+        td["estado"]="Pagado" if balance==0 else "Pago parcial" if paid>0 else "Pendiente"
+        ticket.data=json.dumps(td,ensure_ascii=False)
+        ticket.status=td["estado"]
+    log_action("eliminar pago y reintegrar cuenta","pagos_diarios",payment.id,
+        f"Ticket {data.get('ticket','')}; importe devuelto {amount}; cuenta {account.name or account.id}; saldo cuenta {account.balance}")
+    db.session.delete(payment)
+    db.session.commit()
+    flash("Pago eliminado. Se devolvieron Gs. "+str(amount)+" a "+str(account.name or "la cuenta de origen")+". El saldo del ticket fue recalculado.")
+    return redirect(url_for("pagos_diarios"))
+
+app.add_url_rule("/pagos/<int:pid>/eliminar", endpoint="eliminar_pago_ticket", view_func=eliminar_pago_ticket, methods=["POST"])
+
 app.view_functions["pagos_diarios"]=pagos_diarios
