@@ -35,10 +35,10 @@ def _page(title, body, **kwargs):
     return render_template_string(core.BASE + body + "</main><footer>Freddy Rojas · Gestión empresarial</footer></body></html>", title=title, **kwargs)
 
 # Insertar los accesos en la navegación existente, sin tocar otros sistemas.
-if "Administrar clientes" not in core.BASE:
+if "Administrar proveedores" not in core.BASE:
     core.BASE = core.BASE.replace(
         '<a href="{{url_for(\'module_page\',module=\'materiales\')}}">＋ &nbsp; Agregar material</a>',
-        '<a href="{{url_for(\'module_page\',module=\'materiales\')}}">＋ &nbsp; Agregar material</a><a href="{{url_for(\'admin_clientes\')}}">▣ &nbsp; Administrar clientes</a>'
+        '<a href="{{url_for(\'module_page\',module=\'materiales\')}}">＋ &nbsp; Agregar material</a><a href="{{url_for(\'admin_clientes\')}}">▣ &nbsp; Administrar proveedores</a>'
     )
     core.BASE = core.BASE.replace(
         '<a href="{{url_for(\'admin_section\',section=\'estacion\')}}">⛽ &nbsp; Estación de servicio</a>',
@@ -72,7 +72,7 @@ def admin_clientes():
                       {"proveedor_id": supplier.id, "nombre": sd.get("nombre", supplier.title), "codigo": sd.get("codigo", "")}, 0, "Activo")
                 added += 1
             db.session.commit()
-            flash("Se agregaron " + str(added) + " cliente(s) a Administración.")
+            flash("Se agregaron " + str(added) + " proveedor(es) a Administración.")
             return redirect(url_for("admin_clientes"))
         if action == "deuda":
             try:
@@ -88,10 +88,10 @@ def admin_clientes():
                 d["deuda_actualizada"] = paraguay_now().strftime("%Y-%m-%d %H:%M:%S")
                 selected.data = json.dumps(d, ensure_ascii=False)
                 selected.updated_at = paraguay_now()
-                log_action("actualizar deuda de cliente", "admin_clientes_seleccionados", selected.id,
+                log_action("actualizar deuda de proveedor", "admin_clientes_seleccionados", selected.id,
                            d.get("nombre", "") + "; deuda fijada en Gs. " + str(amount))
                 db.session.commit()
-                flash("Deuda actualizada para " + d.get("nombre", "el cliente") + ": Gs. " + str(amount))
+                flash("Deuda actualizada para proveedor " + d.get("nombre", "el proveedor") + ": Gs. " + str(amount))
             except (InvalidOperation, ValueError, TypeError):
                 db.session.rollback()
                 flash("Ingresá un monto válido de deuda, igual o mayor que cero.")
@@ -110,7 +110,7 @@ def admin_clientes():
                 if not account or not account.active or amount <= 0 or amount > debt:
                     raise InvalidOperation()
                 if amount > Decimal(str(account.balance or 0)):
-                    flash("Saldo bancario insuficiente. No se registró el pago al cliente.")
+                    flash("Saldo bancario insuficiente. No se registró el pago al proveedor.")
                     return redirect(url_for("admin_clientes"))
                 remaining = (debt - amount).quantize(Decimal("0.01"))
                 date = request.form.get("fecha", "") or paraguay_now().strftime("%Y-%m-%d")
@@ -123,7 +123,7 @@ def admin_clientes():
                     "medio": method, "cuenta_empresa": account.name, "cuenta_id": account.id,
                     "detalle": detail, "saldo_bancario_antes": str(account.balance)
                 }
-                payment = _save("pagos_cliente_admin", "Pago a cliente · " + d.get("nombre", ""), payment_data,
+                payment = _save("pagos_cliente_admin", "Pago a proveedor · " + d.get("nombre", ""), payment_data,
                                 amount, "Pagado" if remaining == 0 else "Pago parcial")
                 account.balance = (Decimal(str(account.balance or 0)) - amount).quantize(Decimal("0.01"))
                 d["deuda_actual"] = str(remaining)
@@ -133,16 +133,16 @@ def admin_clientes():
                 report_data = {
                     "modulo_origen": "pagos_cliente_admin", "registro_id": payment.id,
                     "fecha": date, "beneficiario": d.get("nombre", ""), "cliente": d.get("nombre", ""),
-                    "concepto": "Pago de deuda a cliente", "importe": str(amount), "medio": method,
+                    "concepto": "Pago de deuda a proveedor", "importe": str(amount), "medio": method,
                     "detalle": detail, "cuenta_empresa": account.name, "cuenta_id": account.id,
                     "saldo_bancario": str(account.balance), "deuda_restante": str(remaining)
                 }
-                report = Record(module="pagos_cuentas", title="Pago a cliente · " + d.get("nombre", ""),
+                report = Record(module="pagos_cuentas", title="Pago a proveedor · " + d.get("nombre", ""),
                                 data=json.dumps(report_data, ensure_ascii=False), amount=amount,
                                 status="Pagado", company_account_id=account.id, created_by=current_user().id)
                 db.session.add(report)
                 db.session.flush()
-                log_action("pagar deuda a cliente y descontar banco", "pagos_cliente_admin", payment.id,
+                log_action("pagar deuda a proveedor y descontar banco", "pagos_cliente_admin", payment.id,
                            d.get("nombre", "") + "; pago Gs. " + str(amount) + "; deuda restante Gs. " +
                            str(remaining) + "; saldo banco Gs. " + str(account.balance))
                 log_action("registrar pago en informe de pagos", "pagos_cuentas", report.id, report.title)
@@ -151,7 +151,7 @@ def admin_clientes():
                       ". Saldo bancario actualizado: Gs. " + str(account.balance) + ".")
             except (InvalidOperation, ValueError, TypeError):
                 db.session.rollback()
-                flash("No se pudo registrar el pago. Verificá cliente, cuenta, deuda e importe.")
+                flash("No se pudo registrar el pago. Verificá proveedor, cuenta, deuda e importe.")
             return redirect(url_for("admin_clientes"))
 
     suppliers = [(r, _d(r)) for r in _rs("proveedores")]
@@ -175,19 +175,19 @@ def admin_clientes():
                     kg_by_name[name] = kg_by_name.get(name, Decimal("0")) + Decimal(str(kg or 0))
                 except (InvalidOperation, ValueError, TypeError):
                     pass
-    return _page("Administrar clientes", """
-    <section class="card"><button type="button" id="toggle-clientes-registrados" aria-expanded="false" aria-controls="lista-clientes-registrados" onclick="(function(b){var p=document.getElementById('lista-clientes-registrados');var show=p.style.display==='none';p.style.display=show?'block':'none';b.setAttribute('aria-expanded',show?'true':'false');b.textContent=show?'Cerrar lista de clientes':'＋ Agregar cliente';})(this)">＋ Agregar cliente</button>
-      <div id="lista-clientes-registrados" style="display:none;margin-top:16px">
-      <h2>Agregar clientes registrados</h2>
+    return _page("Administrar proveedores", """
+    <section class="card"><button type="button" id="toggle-proveedores-registrados" aria-expanded="false" aria-controls="lista-proveedores-registrados" onclick="(function(b){var p=document.getElementById('lista-proveedores-registrados');var show=p.style.display==='none';p.style.display=show?'block':'none';b.setAttribute('aria-expanded',show?'true':'false');b.textContent=show?'Cerrar lista de proveedores':'＋ Agregar proveedor';})(this)">＋ Agregar proveedor</button>
+      <div id="lista-proveedores-registrados" style="display:none;margin-top:16px">
+      <h2>Agregar proveedores registrados</h2>
       <p>Seleccioná uno o varios proveedores ya registrados para agregarlos a la lista de administración de deudas.</p>
       <form method="post"><input type="hidden" name="accion" value="seleccionar">
-      <div style="overflow-x:auto"><table><tr><th>Seleccionar</th><th>Código</th><th>Cliente</th><th>Documento</th><th>Teléfono</th></tr>
-      {% for r,d in selectable %}<tr><td><input type="checkbox" name="proveedor_id" value="{{r.id}}" style="width:auto"></td><td>{{d.get('codigo','')}}</td><td>{{d.get('nombre',r.title)}}</td><td>{{d.get('cedula','—')}}</td><td>{{d.get('telefono','—')}}</td></tr>{% else %}<tr><td colspan="5">No hay más clientes registrados para agregar.</td></tr>{% endfor %}</table></div>
+      <div style="overflow-x:auto"><table><tr><th>Seleccionar</th><th>Código</th><th>Proveedor</th><th>Documento</th><th>Teléfono</th></tr>
+      {% for r,d in selectable %}<tr><td><input type="checkbox" name="proveedor_id" value="{{r.id}}" style="width:auto"></td><td>{{d.get('codigo','')}}</td><td>{{d.get('nombre',r.title)}}</td><td>{{d.get('cedula','—')}}</td><td>{{d.get('telefono','—')}}</td></tr>{% else %}<tr><td colspan="5">No hay más proveedores registrados para agregar.</td></tr>{% endfor %}</table></div>
       <p><button>Agregar seleccionados</button></p></form>
       </div>
     </section>
-    <section class="card"><h2>Clientes administrados y deudas</h2><div style="overflow-x:auto"><table>
-      <tr><th>Cliente</th><th>Kg ingresados</th><th>Deuda actual (Gs.)</th><th>Actualizar deuda manual</th><th>Registrar pago</th></tr>
+    <section class="card"><h2>Proveedores administrados y deudas</h2><div style="overflow-x:auto"><table>
+      <tr><th>Proveedor</th><th>Kg ingresados</th><th>Deuda actual (Gs.)</th><th>Actualizar deuda manual</th><th>Registrar pago</th></tr>
       {% for r,d in selected %}<tr><td><b>{{d.get('nombre',r.title)}}</b><br><span class="muted">{{d.get('codigo','')}}</span></td>
       <td>{{kg_by_name.get(d.get('nombre','').casefold(),0)}}</td><td><b>Gs. {{d.get('deuda_actual','0')}}</b></td>
       <td><form method="post" class="actions"><input type="hidden" name="accion" value="deuda"><input type="hidden" name="seleccion_id" value="{{r.id}}"><input name="deuda" type="number" min="0" step="0.01" value="{{d.get('deuda_actual','0')}}" required><button>Guardar deuda</button></form></td>
@@ -195,10 +195,10 @@ def admin_clientes():
       <div><label>Importe a pagar (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" max="{{d.get('deuda_actual','0')}}" required></div>
       <div><label>Cuenta bancaria de la empresa</label><select name="cuenta_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name or 'Cuenta central'}} · saldo Gs. {{a.balance}}</option>{% endfor %}</select></div>
       <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Medio</label><select name="medio"><option>Transferencia</option><option>Efectivo</option><option>Cheque</option><option>Otro</option></select></div>
-      <div><label>Detalle / comprobante</label><input name="detalle"></div><div style="align-self:end"><button {% if not accounts or (d.get('deuda_actual','0')|float)<=0 %}disabled{% endif %}>Pagar cliente</button></div></form></td></tr>
-      {% else %}<tr><td colspan="5">Todavía no seleccionaste clientes para administrar.</td></tr>{% endfor %}
+      <div><label>Detalle / comprobante</label><input name="detalle"></div><div style="align-self:end"><button {% if not accounts or (d.get('deuda_actual','0')|float)<=0 %}disabled{% endif %}>Pagar proveedor</button></div></form></td></tr>
+      {% else %}<tr><td colspan="5">Todavía no seleccionaste proveedores para administrar.</td></tr>{% endfor %}
       </table></div></section>
-    <section class="card"><h2>Historial de pagos a clientes</h2><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Deuda anterior</th><th>Importe pagado</th><th>Deuda restante</th><th>Cuenta</th><th>Medio</th><th>Saldo bancario actual registrado</th></tr>
+    <section class="card"><h2>Historial de pagos a proveedores</h2><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Proveedor</th><th>Deuda anterior</th><th>Importe pagado</th><th>Deuda restante</th><th>Cuenta</th><th>Medio</th><th>Saldo bancario actual registrado</th></tr>
       {% for p in payments %}{% set d=decode(p) %}<tr><td>{{local_time(p.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>Gs. {{d.get('deuda_antes','')}}</td><td>Gs. {{p.amount}}</td><td>Gs. {{d.get('deuda_restante','')}}</td><td>{{d.get('cuenta_empresa','')}}</td><td>{{d.get('medio','')}}</td><td>Gs. {{d.get('saldo_bancario_antes','')}}</td></tr>{% else %}<tr><td colspan="8">Todavía no hay pagos registrados.</td></tr>{% endfor %}
       </table></div></section>
     """, selectable=selectable, selected=selected, accounts=accounts, payments=payments,
