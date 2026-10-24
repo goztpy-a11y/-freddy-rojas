@@ -1742,41 +1742,6 @@ def print_record(rid):
     <table><tr><th>Dato</th><th>Información</th></tr>{% for k,v in data.items() %}{% if v is mapping %}<tr><td>{{k}}</td><td>{% for a,b in v.items() %}{{a}}: {{b}}<br>{% endfor %}</td></tr>{% elif v is sequence and v is not string %}<tr><td>{{k}}</td><td>{% for line in v %}{% if line is mapping %}{% for a,b in line.items() %}<b>{{a}}:</b> {{b}} &nbsp; {% endfor %}<br>{% else %}{{line}}<br>{% endif %}{% endfor %}</td></tr>{% else %}<tr><td>{{k}}</td><td>{{v}}</td></tr>{% endif %}{% endfor %}<tr><th>Monto total</th><th>{{rec.amount}}</th></tr></table>
     <p><button class="btn" onclick="window.print()">Imprimir</button> <a class="btn" href="{{url_for('module_page',module=rec.module)}}">Volver al sector</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Imprimir",rec=rec,data=data)
 
-@app.get("/admin/diagnostico-db")
-@admin_required
-def database_diagnostic():
-    """Diagnóstico temporal de solo lectura: no consulta contenido ni modifica datos."""
-    from sqlalchemy import inspect
-    from datetime import time as datetime_time
-    engine = db.engine
-    inspector = inspect(engine)
-    schema = "public" if engine.dialect.name == "postgresql" else None
-    table_names = inspector.get_table_names(schema=schema)
-    now_local = datetime.now(ZoneInfo("America/Asuncion"))
-    yesterday = now_local.date().fromordinal(now_local.date().toordinal() - 1)
-    start_local = datetime.combine(yesterday, datetime_time.min, tzinfo=ZoneInfo("America/Asuncion"))
-    end_local = datetime.combine(now_local.date(), datetime_time.min, tzinfo=ZoneInfo("America/Asuncion"))
-    start_utc = start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-    end_utc = end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-    quote = engine.dialect.identifier_preparer.quote
-    tables = []
-    with engine.connect() as conn:
-        for table_name in sorted(table_names):
-            qualified = (quote(schema) + "." if schema else "") + quote(table_name)
-            total = conn.execute(text("SELECT COUNT(*) FROM " + qualified)).scalar_one()
-            columns = {col["name"] for col in inspector.get_columns(table_name, schema=schema)}
-            item = {"table": table_name, "total_rows": int(total)}
-            if "created_at" in columns:
-                item["created_yesterday_paraguay"] = int(conn.execute(
-                    text("SELECT COUNT(*) FROM " + qualified + " WHERE " + quote("created_at") + " >= :start_at AND " + quote("created_at") + " < :end_at"),
-                    {"start_at": start_utc, "end_at": end_utc}
-                ).scalar_one())
-            tables.append(item)
-    return app.response_class(
-        json.dumps({"app": "freddy-rojas", "database_engine": engine.dialect.name, "database_name": engine.url.database, "read_only": True, "yesterday_paraguay": str(yesterday), "tables": tables}, ensure_ascii=False, indent=2),
-        mimetype="application/json"
-    )
-
 @app.get("/admin/respaldo.json")
 @admin_required
 def backup_export():
