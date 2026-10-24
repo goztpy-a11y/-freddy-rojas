@@ -660,10 +660,11 @@ def admin_section(section):
         ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica")]),
       "estacion": ("Estación de servicio", "CONTROL DE COMBUSTIBLE", "Stock disponible, carga por chofer y chapa, e historial con fecha y hora.", [
         ("Stock e historial de cargas", url_for("combustible_stock"), "Consultar stock y registrar cargas")]),
-      "gomeria": ("Gomería", "MANTENIMIENTO DE NEUMÁTICOS", "Todas las funciones de gomería en una sola sección.", [
-        ("Gomería por camión", url_for("gomeria_camiones"), "Trabajos por vehículo"),
-        ("Servicios de gomería", url_for("module_page",module="gomeria"), "Registrar servicio, costo y responsable"),
-        ("Historial de gomería", url_for("report_module",module="gomeria"), "Consultar registros del área")]),
+      "gomeria": ("Gomería", "MANTENIMIENTO DE NEUMÁTICOS", "Historial por camión, registro de trabajos e inventario de materiales.", [
+        ("Gomería por camión", url_for("gomeria_camiones"), "Consultar el historial individual de cada camión"),
+        ("Servicio de gomería", url_for("servicios_gomeria"), "Registrar trabajo, camión y materiales utilizados"),
+        ("Inventario de materiales", url_for("gomeria_inventario"), "Controlar entradas, existencias y salidas"),
+        ("Movimientos de materiales", url_for("gomeria_movimientos"), "Consultar materiales descontados por servicio")]),
       "inventario": ("Inventario", "STOCK Y MATERIALES", "Materiales, repuestos, ventas y movimientos.", [
         ("Materiales y precios", url_for("module_page",module="materiales"), "Catálogo de materiales"),
         ("Inventario de materiales", url_for("module_page",module="inventario"), "Entradas y existencias"),
