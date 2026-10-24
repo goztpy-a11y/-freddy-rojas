@@ -496,7 +496,7 @@ footer{display:block!important;color:#8b99aa}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('module_page',module='gomeria')}}">Servicios de gomería</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('auditoria_pagos')}}">Auditoría de pagos</a>{% endif %}
-{% for key,meta in MODULES.items() %}{% if key not in ['pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
+{% for key,meta in MODULES.items() %}{% if key not in ['tickets','pagos_diarios','tickets_entrada','prestamos','prestamos_pagos','pagos_cuentas','cobros_cuentas','cuentas_cobrar','proveedores','planillas','flota','combustible_stock','combustible_camion','mantenimiento','gomeria_camiones','fletes','caja_chica'] and allowed(key) %}<a href="{{url_for('module_page',module=key)}}">{{meta[0]}}</a>{% endif %}{% endfor %}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
@@ -861,7 +861,7 @@ def module_page(module):
           if(!q){suggestions.style.display='none';return;}
           const matches=ticketVendors.filter(v=>norm(v.nombre).includes(q)||norm(v.codigo).includes(q)).slice(0,12);
           if(!matches.length){suggestions.style.display='none';return;}
-          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0';btn.textContent=v.nombre+' · '+v.codigo;btn.addEventListener('click',()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);});suggestions.appendChild(btn);});
+          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
           suggestions.style.display='block';
         }
         function updatePrices(force=false, changedRow=null){
