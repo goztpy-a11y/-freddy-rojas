@@ -240,6 +240,65 @@ def proveedores():
     """,mats=mats)
 
 
+@app.get("/auditoria/movimientos-proveedores")
+@login_required
+def auditoria_movimientos_proveedores():
+    if current_user().role!="admin" and not allowed("auditoria"):
+        abort(403)
+    suppliers=[(r,_data(r)) for r in _rows("proveedores")]
+    sale_modules={"tickets_entrada","pagos_diarios","tickets","planillas"}
+    movement_rows=[]
+    for module in sale_modules:
+        movement_rows.extend(_rows(module))
+    summaries=[]
+    for supplier_rec,d in suppliers:
+        name=(d.get("nombre") or "").strip()
+        if not name: continue
+        matches=[]
+        for movement in movement_rows:
+            md=_data(movement)
+            searchable=" ".join([movement.title or "",movement.data or "",str(md.get("persona","")),str(md.get("proveedor","")),str(md.get("cliente",""))]).casefold()
+            if name.casefold() not in searchable: continue
+            if movement.module=="pagos_diarios" and md.get("ticket_entrada_id"):
+                continue
+            matches.append(movement)
+        latest=max(matches,key=lambda x:x.created_at) if matches else None
+        summaries.append({"record":supplier_rec,"data":d,"latest":latest,"count":len(matches),"name":name})
+    summaries.sort(key=lambda x:x["name"].casefold())
+    return _page("Movimientos de proveedores", """
+    <section class="card"><h2>Movimientos de proveedores</h2>
+    <p>La última visita se calcula a partir de los tickets y registros de entrega encontrados para cada proveedor.</p>
+    <form class="actions"><input name="q" value="{{q}}" placeholder="Buscar proveedor"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir listado</button></form>
+    <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>Última visita / entrega</th><th>Movimientos encontrados</th><th>Detalle</th></tr>
+    {% for item in summaries %}{% if not q or q in item.name.casefold() %}<tr><td>{{item.data.get('codigo','—')}}</td><td>{{item.name}}</td><td>{% if item.latest %}{{local_time(item.latest.created_at).strftime('%d/%m/%Y %H:%M:%S')}}{% else %}Sin visitas registradas{% endif %}</td><td>{{item.count}}</td><td><a class="btn" href="{{url_for('auditoria_detalle_proveedor',nombre=item.name)}}">Ver movimientos</a></td></tr>{% endif %}{% else %}<tr><td colspan="5">No hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
+    """,summaries=summaries,q=request.args.get("q","").strip().casefold())
+
+
+@app.get("/auditoria/proveedor/<path:nombre>")
+@login_required
+def auditoria_detalle_proveedor(nombre):
+    if current_user().role!="admin" and not allowed("auditoria"):
+        abort(403)
+    supplier=next((d for r,d in [(x,_data(x)) for x in _rows("proveedores")] if (d.get("nombre") or "").casefold()==nombre.casefold()),None)
+    if not supplier: abort(404)
+    modules={"tickets_entrada","pagos_diarios","tickets","planillas"}
+    rows=[]
+    for module in modules:
+        for rec in _rows(module):
+            d=_data(rec)
+            searchable=" ".join([rec.title or "",rec.data or "",str(d.get("persona","")),str(d.get("proveedor","")),str(d.get("cliente",""))]).casefold()
+            if nombre.casefold() not in searchable: continue
+            if module=="pagos_diarios" and d.get("ticket_entrada_id"): continue
+            rows.append((rec,d))
+    rows.sort(key=lambda pair:pair[0].created_at,reverse=True)
+    return _page("Movimientos del proveedor", """
+    <section class="card"><h2>{{supplier.get('nombre',nombre)}}</h2><p><b>Código:</b> {{supplier.get('codigo','—')}} · <b>RUC / cédula:</b> {{supplier.get('cedula','—')}} · <b>Teléfono:</b> {{supplier.get('telefono','—')}}</p>
+    <p><a class="btn" href="{{url_for('auditoria_movimientos_proveedores')}}">Volver a movimientos de proveedores</a> <button class="btn" type="button" onclick="window.print()">Imprimir</button></p>
+    <div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Tipo</th><th>Movimiento</th><th>Monto (Gs.)</th><th>Detalle</th></tr>
+    {% for r,d in rows %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{r.module}}</td><td>{{r.title}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver registro</a></td></tr>{% else %}<tr><td colspan="5">No se encontraron movimientos de este proveedor.</td></tr>{% endfor %}</table></div></section>
+    """,supplier=supplier,nombre=nombre,rows=rows)
+
+
 @app.get("/listado-proveedores")
 @login_required
 def listado_proveedores():
@@ -941,7 +1000,8 @@ def caja_chica():
 def view_record(rid):
     rec=db.session.get(Record,rid)
     if not rec: abort(404)
-    if current_user().role!="admin" and not allowed(rec.module): abort(403)
+    audit_finance_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","tickets_entrada","inventario","solicitudes","cobros_cuentas","cuentas_cobrar","proveedores","planillas","flota","cheques"}
+    if current_user().role!="admin" and not allowed(rec.module) and not (allowed("auditoria") and rec.module in audit_finance_modules): abort(403)
     data=_data(rec)
     created=local_time(rec.created_at)
     return _page("Detalle del registro", """
