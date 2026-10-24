@@ -646,7 +646,7 @@ def caja_chica():
     q=request.args.get("q","").strip().casefold()
     # El historial de Caja chica debe mostrar solo gastos; los ajustes de saldo
     # son operaciones administrativas y no representan dinero gastado.
-    shown=[r for r in rows if (_data(r).get("tipo")=="gasto" or _data(r).get("origen")=="transferencia_bancaria") and
+    shown=[r for r in rows if _data(r).get("tipo")=="gasto" and
            (not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold())]
     return _page("Caja chica", """
     <section class="card"><h2>Saldo disponible de caja chica</h2><h3>Gs. {{balance}}</h3>
