@@ -806,54 +806,99 @@ def module_page(module):
                 continue
         material_prices={m.name:{"id":m.id,"minorista":str(m.price or ""),"mayorista":str(m.wholesale_price or "") if m.wholesale_price is not None else ""} for m in materials}
         if request.method=="POST":
-            client=request.form.get("cliente","").strip(); names=request.form.getlist("material"); quantities=request.form.getlist("cantidad"); submitted_prices=request.form.getlist("precio"); price_type=request.form.get("tipo_precio","minorista")
+            client=request.form.get("cliente","").strip()
+            names=request.form.getlist("material")
+            quantities=request.form.getlist("cantidad")
+            submitted_prices=request.form.getlist("precio")
             lines=[]; total=Decimal("0")
-            if not client: flash("Ingresá el cliente o proveedor."); return redirect(url_for("module_page",module=module))
+            if not client:
+                flash("Seleccioná un proveedor por nombre o código."); return redirect(url_for("module_page",module=module))
             vendor=next((v for v in vendor_prices if client.casefold() in (v["nombre"].casefold(),v["codigo"].casefold())),None)
+            if not vendor:
+                flash("Elegí un proveedor registrado de la lista para cargar sus precios guardados.")
+                return redirect(url_for("module_page",module=module))
             for idx,(name,raw) in enumerate(zip(names,quantities)):
                 name=name.strip(); raw=raw.strip().replace(",",".")
                 if not name and not raw: continue
                 try:
                     qty=Decimal(raw); mat=Material.query.filter(db.func.lower(Material.name)==name.lower()).first()
                     if not mat or qty<=0: raise InvalidOperation()
-                    assigned=(vendor or {}).get("precios",{}).get(str(mat.id))
+                    assigned=(vendor.get("precios") or {}).get(str(mat.id))
                     manual=(submitted_prices[idx].strip().replace(",",".") if idx<len(submitted_prices) else "")
-                    if assigned not in (None,""):
-                        price=Decimal(str(assigned))
-                    elif manual:
-                        price=Decimal(manual)
+                    if assigned not in (None,""): price=Decimal(str(assigned))
+                    elif manual: price=Decimal(manual)
                     else:
-                        price=mat.price if price_type=="minorista" else mat.wholesale_price
-                    if price is None or price<0 or (assigned in (None,"") and not manual and price<=0):
-                        flash("Ingresá manualmente el precio de "+mat.name+"; ese proveedor no tiene un precio guardado para ese material."); return redirect(url_for("module_page",module=module))
+                        flash("Ingresá manualmente el precio por kg de "+mat.name+"; este proveedor no tiene uno guardado para ese material.")
+                        return redirect(url_for("module_page",module=module))
+                    if price<0: raise InvalidOperation()
                     line_total=(qty*price).quantize(Decimal("0.01")); total+=line_total
-                    lines.append({"material":mat.name,"cantidad":str(qty),"tipo_precio":price_type,"precio":str(price),"total":str(line_total)})
-                except (InvalidOperation,ValueError): flash("Revisá la cantidad y el precio de cada material."); return redirect(url_for("module_page",module=module))
-            if not lines: flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
-            data={"cliente":client,"materiales":lines,"tipo_precio":price_type,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
+                    lines.append({"material":mat.name,"cantidad":str(qty),"precio":str(price),"total":str(line_total)})
+                except (InvalidOperation,ValueError):
+                    flash("Revisá la cantidad y el precio de cada material."); return redirect(url_for("module_page",module=module))
+            if not lines:
+                flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
+            data={"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush(); log_action("crear ticket de entrada","tickets",rec.id,f"{client}; total {total}"); db.session.commit()
-            flash("Ticket guardado."); return redirect(url_for("module_page",module=module))
+            flash("Carga guardada."); return redirect(url_for("module_page",module=module))
         q=request.args.get("q","").strip().casefold(); hist=Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all()
         parsed=[(r,json.loads(r.data or "{}")) for r in hist if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><form method="post" id="ticket-form"><div class="grid">
-        <div><label>Cliente / código del proveedor</label><input name="cliente" list="ticket-vendors" id="ticket-client" autocomplete="off" required><datalist id="ticket-vendors">{% for v in vendor_prices %}<option value="{{v.nombre}}" label="{{v.codigo}}"></option><option value="{{v.codigo}}" label="{{v.nombre}}"></option>{% endfor %}</datalist></div><div><label>Tipo de precio</label><select name="tipo_precio" id="ticket-price-type"><option value="minorista">Minorista</option><option value="mayorista">Mayorista</option></select></div>
+        <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required><div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
         <div><label>Cuenta bancaria del cliente (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
-        <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Se completa automáticamente o ingresá el precio"></div><div><label>Subtotal (Gs.)</label><input class="line-total" readonly></div></div></div>
+        <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Subtotal (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar cliente, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
         <table><tr><th>Fecha/hora</th><th>Cliente</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
-        function selectedVendor(){const val=document.getElementById('ticket-client').value.trim().toLocaleLowerCase();return ticketVendors.find(v=>v.nombre.toLocaleLowerCase()===val||v.codigo.toLocaleLowerCase()===val);}
-        function updateTicketPrices(){const vendor=selectedVendor(),type=document.getElementById('ticket-price-type').value;document.querySelectorAll('.ticket-line').forEach(row=>{const mat=row.querySelector('[name="material"]').value,field=row.querySelector('[name="precio"]'),info=ticketMaterials[mat];if(!info)return;const assigned=vendor&&vendor.precios[String(info.id)];if(assigned!==undefined&&assigned!==null&&assigned!==""){field.value=assigned;field.dataset.autofilled="yes";}else{field.dataset.autofilled="";if(!field.value||field.dataset.lastAuto==="yes")field.value=info[type]||"";}field.dataset.lastAuto=field.dataset.autofilled;updateLineTotal(row);});}
-        function updateLineTotal(row){const q=parseFloat((row.querySelector('[name="cantidad"]').value||"0").replace(",",".")),p=parseFloat((row.querySelector('[name="precio"]').value||"0").replace(",","."));row.querySelector('.line-total').value=(q>0&&p>=0&&row.querySelector('[name="precio"]').value!=="")?(q*p).toLocaleString('es-PY',{maximumFractionDigits:2}):"";updateTicketGrandTotal();}
-        function updateTicketGrandTotal(){let sum=0;document.querySelectorAll('.ticket-line').forEach(row=>{const q=parseFloat((row.querySelector('[name="cantidad"]').value||"0").replace(",",".")),p=parseFloat((row.querySelector('[name="precio"]').value||"0").replace(",","."));if(q>0&&p>=0&&row.querySelector('[name="precio"]').value!=="")sum+=q*p;});document.getElementById('ticket-grand-total').value=sum.toLocaleString('es-PY',{maximumFractionDigits:2});}
-        function addTicketLine(){const root=document.getElementById('ticket-lines'),copy=root.querySelector('.ticket-line').cloneNode(true);copy.querySelector('[name="material"]').value='';copy.querySelector('[name="cantidad"]').value='';copy.querySelector('[name="precio"]').value='';copy.querySelector('[name="precio"]').dataset.autofilled='';copy.querySelector('[name="precio"]').dataset.lastAuto='';copy.querySelector('.line-total').value='';copy.querySelector('[name="material"]').required=false;copy.querySelector('[name="cantidad"]').required=false;root.appendChild(copy);updateTicketGrandTotal();}
-        document.getElementById('ticket-client').addEventListener('change',updateTicketPrices);document.getElementById('ticket-client').addEventListener('input',updateTicketPrices);document.getElementById('ticket-price-type').addEventListener('change',updateTicketPrices);
-        document.getElementById('ticket-lines').addEventListener('change',e=>{if(e.target.name==='material')updateTicketPrices();});document.getElementById('ticket-lines').addEventListener('input',e=>{const row=e.target.closest('.ticket-line');if(row&&(e.target.name==='cantidad'||e.target.name==='precio'))updateLineTotal(row);});
-        </script>
+        const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
+        let selectedVendorKey='';
+        function norm(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();}
+        function selectedVendor(){const s=norm(clientField.value);return ticketVendors.find(v=>norm(v.nombre)===s||norm(v.codigo)===s);}
+        function showVendorMatches(){
+          const q=norm(clientField.value);suggestions.replaceChildren();
+          if(!q){suggestions.style.display='none';return;}
+          const matches=ticketVendors.filter(v=>norm(v.nombre).includes(q)||norm(v.codigo).includes(q)).slice(0,12);
+          if(!matches.length){suggestions.style.display='none';return;}
+          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0';btn.textContent=v.nombre+' · '+v.codigo;btn.addEventListener('click',()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);});suggestions.appendChild(btn);});
+          suggestions.style.display='block';
+        }
+        function updatePrices(force=false, changedRow=null){
+          const vendor=selectedVendor(),key=vendor?norm(vendor.codigo||vendor.nombre):'';
+          if(force||key!==selectedVendorKey){selectedVendorKey=key;document.querySelectorAll('.ticket-line [name="precio"]').forEach(f=>{f.value='';f.dataset.autofilled='';f.dataset.pricekey='';});}
+          document.querySelectorAll('.ticket-line').forEach(row=>{
+            const material=row.querySelector('[name="material"]').value,field=row.querySelector('[name="precio"]'),info=ticketMaterials[material];
+            if(changedRow===row){field.value='';field.dataset.autofilled='';field.dataset.pricekey='';}
+            const assigned=vendor&&info&&(vendor.precios||{})[String(info.id)],priceKey=key+'|'+(info?info.id:'');
+            if(assigned!==undefined&&assigned!==null&&String(assigned).trim()!==''){field.value=String(assigned);field.dataset.autofilled='yes';field.dataset.pricekey=priceKey;}
+            else {if(field.dataset.autofilled==='yes'||(field.dataset.pricekey&&field.dataset.pricekey!==priceKey))field.value='';field.dataset.autofilled='';field.dataset.pricekey=priceKey;}
+            updateLineTotal(row);
+          });
+        }
+        function numeric(field){return parseFloat(String(field.value||'').replace(',','.'));}
+        function updateLineTotal(row){
+          const q=numeric(row.querySelector('[name="cantidad"]')),f=row.querySelector('[name="precio"]'),p=numeric(f),valid=Number.isFinite(q)&&q>0&&Number.isFinite(p)&&p>=0&&f.value.trim()!=='';
+          row.querySelector('.line-total').value=valid?(q*p).toLocaleString('es-PY',{maximumFractionDigits:2}):'';updateGrandTotal();
+        }
+        function updateGrandTotal(){
+          let sum=0,has=false;document.querySelectorAll('.ticket-line').forEach(row=>{const q=numeric(row.querySelector('[name="cantidad"]')),f=row.querySelector('[name="precio"]'),p=numeric(f);if(Number.isFinite(q)&&q>0&&Number.isFinite(p)&&p>=0&&f.value.trim()!==''){sum+=q*p;has=true;}});
+          document.getElementById('ticket-grand-total').value=has?sum.toLocaleString('es-PY',{maximumFractionDigits:2}):'0';
+        }
+        function addTicketLine(){
+          const root=document.getElementById('ticket-lines'),row=root.querySelector('.ticket-line').cloneNode(true);
+          row.querySelector('[name="material"]').value='';row.querySelector('[name="cantidad"]').value='';row.querySelector('[name="precio"]').value='';row.querySelector('[name="precio"]').dataset.autofilled='';row.querySelector('[name="precio"]').dataset.pricekey='';row.querySelector('.line-total').value='';
+          row.querySelector('[name="material"]').required=false;row.querySelector('[name="cantidad"]').required=false;root.appendChild(row);updateGrandTotal();
+        }
+        clientField.addEventListener('input',showVendorMatches);
+        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);});
+        clientField.addEventListener('blur',()=>setTimeout(()=>{suggestions.style.display='none';},180));
+        document.addEventListener('click',e=>{if(!suggestions.contains(e.target)&&e.target!==clientField)suggestions.style.display='none';});
+        document.getElementById('ticket-lines').addEventListener('change',e=>{if(e.target.name==='material')updatePrices(false,e.target.closest('.ticket-line'));});
+        document.getElementById('ticket-lines').addEventListener('input',e=>{const row=e.target.closest('.ticket-line');if(row&&(e.target.name==='cantidad'||e.target.name==='precio'))updateLineTotal(row);});
+        updateGrandTotal();
+        </script>/script>
         </main><footer>El Toro S.A.</footer></body></html>""",title=title,materials=materials,parsed=parsed,q=q,vendor_prices=vendor_prices,material_prices=material_prices)
     if module == "auditoria" and request.method == "GET":
         q=request.args.get("q","").strip().casefold(); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
