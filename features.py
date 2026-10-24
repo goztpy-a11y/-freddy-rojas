@@ -718,7 +718,7 @@ def _professional_reports():
     original_reports=app.view_functions.get("reports")
     original_module_report=app.view_functions.get("report_module")
     def reports_pro():
-        available=[(key,("Informe de pagos" if key=="pagos_cuentas" else meta[0])) for key,meta in MODULES.items() if allowed(key) and key!="cobros_cuentas"]
+        available=[(key,("Informe de pagos" if key=="pagos_cuentas" else meta[0])) for key,meta in MODULES.items() if allowed(key) and key not in ("cobros_cuentas", "flota", "mantenimiento")]
         return render_template_string(BASE+"""
         <section class="card"><h2>Informes por sector</h2><p>Consultá los movimientos y compará los resultados de cada sector.</p>
         <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{color:#111!important;background:#dce6f1;border-color:#b6c7da}.analytics-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:16px 0}.analytics-kpi{padding:15px;border:1px solid #e1e8f0;border-radius:11px;background:#f8fafd}.analytics-kpi span{display:block;font-size:11px;color:#62748a;font-weight:700}.analytics-kpi strong{display:block;font-size:22px;color:#173d67;margin-top:5px}.trend-up{color:#16805d;font-weight:800}.trend-down{color:#b54747;font-weight:800}.trend-flat{color:#64748b;font-weight:800}.analytics-table{margin:12px 0 20px}.analytics-table td,.analytics-table th{white-space:normal}.analytics-note{color:#687b91;font-size:12px;margin:8px 0 14px}@media(max-width:600px){.analytics-kpi{padding:11px}.analytics-kpi strong{font-size:18px}}</style>
