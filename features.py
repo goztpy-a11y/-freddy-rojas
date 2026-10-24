@@ -157,8 +157,18 @@ def prestamos():
             cliente=request.form.get("cliente","").strip(); entidad=request.form.get("entidad","").strip()
             monto=Decimal(request.form.get("monto","").replace(",",".")); plazo=int(request.form.get("plazo","12"))
             if not cliente or not entidad or monto<=0 or plazo<1 or plazo>12: raise InvalidOperation()
-            _save("prestamos","Préstamo · "+entidad,{"cliente":cliente,"entidad":entidad,"proveedor":entidad,"fecha":request.form.get("fecha",""),"monto":str(monto),"plazo_meses":plazo,"modalidad":request.form.get("modalidad","Efectivo"),"vencimiento":request.form.get("vencimiento",""),"observaciones":request.form.get("observaciones","")},monto,"Pendiente")
-            flash("Préstamo registrado.")
+            existing_loans=_rows("prestamos")
+            max_number=0
+            for old_loan in existing_loans:
+                old_data=_data(old_loan)
+                old_number=str(old_data.get("numero_prestamo") or "")
+                if old_number.startswith("PR-") and old_number[3:].isdigit():
+                    max_number=max(max_number,int(old_number[3:]))
+                else:
+                    max_number=max(max_number,old_loan.id)
+            number="PR-"+str(max_number+1).zfill(4)
+            _save("prestamos","Préstamo "+number+" · "+entidad,{"numero_prestamo":number,"cliente":cliente,"entidad":entidad,"proveedor":entidad,"fecha":request.form.get("fecha",""),"monto":str(monto),"plazo_meses":plazo,"modalidad":request.form.get("modalidad","Efectivo"),"vencimiento":request.form.get("vencimiento",""),"observaciones":request.form.get("observaciones","")},monto,"Pendiente")
+            flash("Préstamo registrado con número "+number+".")
         except (ValueError,InvalidOperation):
             flash("Revisá los datos del préstamo; el plazo permitido es de 1 a 12 meses.")
         return redirect(url_for("prestamos"))
@@ -302,71 +312,111 @@ def movimiento_proveedor(nombre):
 def planillas():
     _can_caja()
     if request.method=="POST" and request.form.get("accion")=="pago_prestamo":
+        loan_id=None
         try:
-            loan_id=int(request.form.get("prestamo_id","")); loan=db.session.get(Record,loan_id)
-            amount=Decimal(request.form.get("importe","").replace(",",".")); d=_data(loan) if loan else {}
-            if not loan or loan.module!="prestamos" or amount<=0: raise InvalidOperation()
+            loan_id=int(request.form.get("prestamo_id",""))
+            loan=db.session.get(Record,loan_id)
+            d=_data(loan) if loan else {}
+            if not loan or loan.module!="prestamos":
+                raise InvalidOperation()
             provider=d.get("proveedor") or d.get("entidad","")
+            loan_number=d.get("numero_prestamo") or ("PR-"+str(loan.id).zfill(4))
             paid=sum((Decimal(str(_data(p).get("aplicado",_data(p).get("importe",0)))) for p in _rows("prestamos_pagos") if str(_data(p).get("prestamo_id"))==str(loan_id)),Decimal("0"))
             balance=max(Decimal("0"),Decimal(str(d.get("monto",0)))-paid)
-            if balance<=0: raise InvalidOperation()
-            applied=min(amount,balance); excess=max(Decimal("0"),amount-balance)
+            if balance<=0:
+                raise InvalidOperation()
+            if request.form.get("pago_total")=="1":
+                amount=balance
+            else:
+                amount=Decimal(request.form.get("importe","").replace(",","." ))
+            if amount<=0:
+                raise InvalidOperation()
+            applied=min(amount,balance)
+            excess=max(Decimal("0"),amount-balance)
             payment_date=request.form.get("fecha","") or paraguay_now().strftime("%Y-%m-%d")
             method=request.form.get("medio","Efectivo")
             detail=request.form.get("observaciones","").strip()
-            pdata={"prestamo_id":loan_id,"cliente":d.get("cliente",""),"entidad":d.get("entidad",""),"proveedor":provider,"fecha":payment_date,"importe":str(amount),"aplicado":str(applied),"excedente_credito":str(excess),"medio":method,"observaciones":detail,"origen":"Cuenta de proveedores"}
-            payment=Record(module="prestamos_pagos",title="Pago préstamo · "+provider,data=json.dumps(pdata,ensure_ascii=False),amount=amount,status="Pagado" if excess>0 or applied==balance else "Pago parcial",created_by=current_user().id)
-            db.session.add(payment); db.session.flush()
-            log_action("registrar pago de préstamo desde cuenta de proveedores","prestamos_pagos",payment.id,provider+"; recibido "+str(amount)+"; aplicado "+str(applied)+"; saldo a favor "+str(excess))
+            pdata={"prestamo_id":loan_id,"numero_prestamo":loan_number,"cliente":d.get("cliente",""),"entidad":d.get("entidad",""),"proveedor":provider,"fecha":payment_date,"importe":str(amount),"aplicado":str(applied),"excedente_credito":str(excess),"medio":method,"observaciones":detail,"origen":"Cuenta de proveedores"}
+            payment=Record(module="prestamos_pagos",title="Pago "+loan_number+" · "+provider,data=json.dumps(pdata,ensure_ascii=False),amount=amount,status="Pagado" if applied==balance else "Pago parcial",created_by=current_user().id)
+            db.session.add(payment)
+            db.session.flush()
+            log_action("registrar pago de préstamo desde cuenta de proveedores","prestamos_pagos",payment.id,loan_number+" · "+provider+"; recibido "+str(amount)+"; aplicado "+str(applied)+"; saldo a favor "+str(excess))
             db.session.commit()
-            flash("Pago registrado para "+provider+". Aplicado al préstamo: Gs. "+str(applied)+". Saldo a favor del proveedor: Gs. "+str(excess)+".")
+            flash("Pago registrado en el historial del préstamo "+loan_number+".")
         except (ValueError,InvalidOperation,TypeError):
             db.session.rollback()
-            flash("No se pudo registrar el pago. Verificá el proveedor, el préstamo y el monto.")
+            flash("No se pudo registrar el pago. Verificá el préstamo y el monto.")
+        if loan_id:
+            return redirect(url_for("planillas",prestamo_id=loan_id))
         return redirect(url_for("planillas"))
-    if request.method=="POST":
-        d={k:request.form.get(k,"").strip() for k in ["cliente","fecha","material_id","kg","monto_deuda","diferencia","pago","medio","flete","salida","detalle"]}
-        try:
-            kg=Decimal(d["kg"] or "0"); debt=Decimal(d["monto_deuda"] or "0"); diff=Decimal(d["diferencia"] or "0"); pay=Decimal(d["pago"] or "0"); freight=Decimal(d["flete"] or "0")
-            if not d["cliente"] or min(kg,debt,diff,pay,freight)<0: raise InvalidOperation()
-            material=db.session.get(__import__("app").Material,int(d["material_id"])) if d["material_id"] else None
-            price=Decimal("0")
-            if material:
-                vendor=next((_data(v) for v in _rows("proveedores") if _data(v).get("nombre","").casefold()==d["cliente"].casefold()),{})
-                assigned=vendor.get("precios_materiales",{}).get(str(material.id))
-                price=Decimal(str(assigned)) if assigned not in (None,"") else (material.wholesale_price if material.wholesale_price is not None else material.price)
-            goods=(kg*price).quantize(Decimal("0.01"))
-            previous=[_data(r) for r in _rows("planillas") if _data(r).get("cliente","").casefold()==d["cliente"].casefold()]
-            previous_balance=Decimal(str(previous[0].get("saldo_final",previous[0].get("monto_deuda",0)))) if previous else debt
-            balance=previous_balance+goods+diff+freight-pay
-            if balance<0: raise InvalidOperation()
-            d.update({"kg":str(kg),"monto_deuda":str(previous_balance),"precio_unitario":str(price),"monto_mercaderia":str(goods),"diferencia":str(diff),"pago":str(pay),"flete":str(freight),"saldo_final":str(balance)})
-            _save("planillas",d["cliente"]+" · planilla",d,pay,"Pagado" if balance==0 else ("Pago parcial" if pay else "Registrado"))
-            flash("Planilla guardada. Mercadería: Gs. "+str(goods)+". Saldo actualizado: Gs. "+str(balance))
-        except (InvalidOperation,ValueError):
-            flash("Revisá el cliente, material y valores numéricos; el pago no puede superar el saldo.")
-        return redirect(url_for("planillas"))
-    rows=_rows("planillas")
-    from app import Material
-    materials=Material.query.order_by(Material.name).all()
-    vendors=[_data(r).get("nombre") for r in _rows("proveedores") if _data(r).get("nombre")]
-    loans=_rows("prestamos"); loan_payments=_rows("prestamos_pagos"); loan_summaries=[]
+
+    loans=_rows("prestamos")
+    loan_payments=_rows("prestamos_pagos")
+    q=request.args.get("q","").strip().casefold()
+    searching=request.args.get("buscar")=="1"
+    selected_id=request.args.get("prestamo_id","").strip()
+    selected=None
+    if selected_id.isdigit():
+        candidate=db.session.get(Record,int(selected_id))
+        if candidate and candidate.module=="prestamos":
+            selected=candidate
+    summaries=[]
     for loan in loans:
-        ld=_data(loan); provider=ld.get("proveedor") or ld.get("entidad","")
+        ld=_data(loan)
+        provider=ld.get("proveedor") or ld.get("entidad","")
+        number=ld.get("numero_prestamo") or ("PR-"+str(loan.id).zfill(4))
         paid=sum((Decimal(str(_data(p).get("aplicado",_data(p).get("importe",0)))) for p in loan_payments if str(_data(p).get("prestamo_id"))==str(loan.id)),Decimal("0"))
-        principal=Decimal(str(ld.get("monto",0))); balance=max(Decimal("0"),principal-paid)
+        principal=Decimal(str(ld.get("monto",0)))
+        balance=max(Decimal("0"),principal-paid)
         credit=sum((Decimal(str(_data(p).get("excedente_credito",0))) for p in loan_payments if str(_data(p).get("prestamo_id"))==str(loan.id)),Decimal("0"))
-        loan_summaries.append((loan,ld,provider,paid,balance,credit))
-    return _page("Cuenta de proveedores", """
-    <section class="card"><h2>Cuenta de proveedores · diferencias, mercadería, pagos y salidas</h2><form method="post" class="grid">
-    <div><label>Cliente / proveedor</label><input name="cliente" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v}}">{% endfor %}</datalist></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-    <div><label>Material</label><select name="material_id"><option value="">Sin material / ajuste manual</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Kilogramos recibidos</label><input name="kg" type="number" min="0" step="0.001" value="0"></div><div><label>Deuda inicial si no hay historial (Gs.)</label><input name="monto_deuda" type="number" min="0" step="0.01" value="0"></div>
-    <div><label>Diferencia de este movimiento (Gs.)</label><input name="diferencia" type="number" min="0" step="0.01" value="0"></div><div><label>Pago parcial (Gs.)</label><input name="pago" type="number" min="0" step="0.01" value="0"></div>
-    <div><label>Medio de pago</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label>Flete (Gs.)</label><input name="flete" type="number" min="0" step="0.01" value="0"></div>
-    <div><label>Salida / retiro</label><input name="salida" placeholder="Detalle de salida"></div><div><label>Observaciones</label><input name="detalle"></div><div style="align-self:end"><button>Guardar planilla</button></div></form></section>
-    <section class="card"><h2>Préstamos pendientes de proveedores</h2><p>Los préstamos aparecen en la cuenta del proveedor correspondiente. Podés registrar pagos parciales o mayores al saldo pendiente; cualquier excedente queda guardado como saldo a favor del proveedor.</p><div style="overflow-x:auto"><table><tr><th>Proveedor</th><th>Fecha</th><th>Préstamo</th><th>Pagado aplicado</th><th>Saldo del préstamo</th><th>Saldo a favor acumulado</th><th>Registrar pago</th></tr>{% for loan,ld,provider,paid,balance,credit in loan_summaries %}<tr><td>{{provider}}</td><td>{{ld.get('fecha','')}} · {{local_time(loan.created_at).strftime('%H:%M:%S')}}</td><td>Gs. {{ld.get('monto')}}</td><td>Gs. {{paid}}</td><td><b>Gs. {{balance}}</b></td><td>Gs. {{credit}}</td><td>{% if balance>0 %}<form method="post" class="grid" style="min-width:230px;gap:6px"><input type="hidden" name="accion" value="pago_prestamo"><input type="hidden" name="prestamo_id" value="{{loan.id}}"><input name="importe" type="number" min="0.01" step="0.01" placeholder="Monto que paga" required><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="observaciones" placeholder="Observaciones"><button>Registrar pago</button></form>{% else %}Préstamo cancelado{% endif %}</td></tr>{% else %}<tr><td colspan="7">Todavía no hay préstamos asociados a proveedores.</td></tr>{% endfor %}</table></div></section>
-    <section class="card"><h2>Historial de planillas</h2><button type="button" onclick="window.print()">Imprimir</button><table><tr><th>Fecha</th><th>Cliente</th><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Mercadería</th><th>Saldo anterior</th><th>Diferencia</th><th>Pago</th><th>Flete</th><th>Saldo actualizado</th><th>Salida</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente')}}</td><td>{% for m in materials %}{% if m.id|string==d.get('material_id') %}{{m.name}}{% endif %}{% endfor %}</td><td>{{d.get('kg')}}</td><td>{{d.get('precio_unitario')}}</td><td>{{d.get('monto_mercaderia')}}</td><td>{{d.get('monto_deuda')}}</td><td>{{d.get('diferencia')}}</td><td>{{d.get('pago')}}</td><td>{{d.get('flete')}}</td><td><b>{{d.get('saldo_final')}}</b></td><td>{{d.get('salida')}}</td></tr>{% endfor %}</table></section>
-    """,rows=rows,materials=materials,vendors=vendors,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
+        if q and q not in (number+" "+provider+" "+str(ld.get("cliente",""))+" "+str(ld.get("monto",""))).casefold():
+            continue
+        summaries.append((loan,ld,provider,number,paid,balance,credit))
+    selected_summary=next((item for item in summaries if selected and item[0].id==selected.id),None)
+    # A selected loan must still be viewable even when a search filter is active.
+    if selected and not selected_summary:
+        ld=_data(selected); provider=ld.get("proveedor") or ld.get("entidad","")
+        number=ld.get("numero_prestamo") or ("PR-"+str(selected.id).zfill(4))
+        paid=sum((Decimal(str(_data(p).get("aplicado",_data(p).get("importe",0)))) for p in loan_payments if str(_data(p).get("prestamo_id"))==str(selected.id)),Decimal("0"))
+        balance=max(Decimal("0"),Decimal(str(ld.get("monto",0)))-paid)
+        credit=sum((Decimal(str(_data(p).get("excedente_credito",0))) for p in loan_payments if str(_data(p).get("prestamo_id"))==str(selected.id)),Decimal("0"))
+        selected_summary=(selected,ld,provider,number,paid,balance,credit)
+    selected_payments=[p for p in loan_payments if selected and str(_data(p).get("prestamo_id"))==str(selected.id)]
+    selected_payments.sort(key=lambda p:p.created_at,reverse=True)
+    return _page("Cuenta de proveedor", """
+    <section class="card"><h2>Cuenta de proveedor</h2>
+    <form method="get" class="actions"><button type="submit" name="buscar" value="1">Buscar préstamos</button></form>
+    {% if searching and not selected_summary %}
+      <div style="overflow-x:auto;margin-top:16px"><table><tr><th>N.º de préstamo</th><th>Proveedor</th><th>Fecha</th><th>Monto original</th><th>Pagado</th><th>Saldo pendiente</th><th>Detalle</th></tr>
+      {% for loan,ld,provider,number,paid,balance,credit in summaries %}
+      <tr><td><b>{{number}}</b></td><td>{{provider}}</td><td>{{ld.get('fecha','')}}</td><td>Gs. {{ld.get('monto','0')}}</td><td>Gs. {{paid}}</td><td><b>Gs. {{balance}}</b></td><td><a class="btn" href="{{url_for('planillas',prestamo_id=loan.id)}}">Abrir préstamo</a></td></tr>
+      {% else %}<tr><td colspan="7">No hay préstamos registrados que coincidan con la búsqueda.</td></tr>{% endfor %}
+      </table></div>
+    {% endif %}
+    {% if selected_summary %}
+      {% set loan,ld,provider,number,paid,balance,credit=selected_summary %}
+      <div style="margin-top:18px"><p><a class="btn" href="{{url_for('planillas',buscar=1)}}">← Volver a préstamos</a></p>
+      <h3>Detalle del préstamo {{number}}</h3>
+      <p><b>Proveedor:</b> {{provider}}</p><p><b>Fecha:</b> {{ld.get('fecha','')}}</p>
+      <p><b>Monto original:</b> Gs. {{ld.get('monto','0')}}</p><p><b>Total pagado aplicado:</b> Gs. {{paid}}</p>
+      <p><b>Saldo pendiente:</b> Gs. {{balance}}</p><p><b>Saldo a favor del proveedor:</b> Gs. {{credit}}</p>
+      {% if balance>0 %}
+      <form method="post" class="grid" style="margin-top:16px"><input type="hidden" name="accion" value="pago_prestamo"><input type="hidden" name="prestamo_id" value="{{loan.id}}">
+      <div><label>Importe a pagar (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" placeholder="Monto del pago"></div>
+      <div><label>Fecha del pago</label><input name="fecha" type="date" value="{{today}}" required></div>
+      <div><label>Medio de pago</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div>
+      <div><label>Observaciones</label><input name="observaciones"></div>
+      <div style="align-self:end"><button type="submit">Registrar pago parcial</button></div>
+      <div style="align-self:end"><button type="submit" name="pago_total" value="1" onclick="return confirm('¿Confirmás cancelar el saldo total de este préstamo?')">Pago total · Gs. {{balance}}</button></div>
+      </form>
+      {% else %}<p class="ok">Préstamo totalmente pagado.</p>{% endif %}
+      <h3 style="margin-top:22px">Historial de pagos de este préstamo</h3>
+      <div style="overflow-x:auto"><table><tr><th>Fecha</th><th>Importe recibido</th><th>Aplicado al préstamo</th><th>Saldo a favor</th><th>Medio</th><th>Observaciones</th></tr>
+      {% for p in selected_payments %}{% set pd=decode(p) %}<tr><td>{{pd.get('fecha','')}} · {{local_time(p.created_at).strftime('%H:%M:%S')}}</td><td>Gs. {{pd.get('importe',p.amount)}}</td><td>Gs. {{pd.get('aplicado',p.amount)}}</td><td>Gs. {{pd.get('excedente_credito','0')}}</td><td>{{pd.get('medio','')}}</td><td>{{pd.get('observaciones','')}}</td></tr>
+      {% else %}<tr><td colspan="6">Este préstamo todavía no tiene pagos registrados.</td></tr>{% endfor %}</table></div></div>
+    {% endif %}
+    </section>
+    """,summaries=summaries,searching=searching,selected_summary=selected_summary,selected_payments=selected_payments,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 @app.route("/flota",methods=["GET","POST"])
 @login_required
