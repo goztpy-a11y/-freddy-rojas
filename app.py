@@ -569,7 +569,6 @@ def index():
     quick_actions = []
     if u.role == "admin" or allowed("caja"):
         quick_actions += [
-            ("Registrar carga", url_for("module_page",module="tickets"), "Registrar una carga de materiales"),
             ("Proveedores y precios", url_for("proveedores"), "Consultar y actualizar precios"),
             ("Caja chica", url_for("caja_chica"), "Revisar saldo y registrar gastos")]
     if u.role == "admin" or allowed("estacion"):
