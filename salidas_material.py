@@ -2,7 +2,7 @@ import json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from flask import request, redirect, url_for, flash
-from app import app, db, Record, Material, MODULES, current_user, log_action, paraguay_now
+from app import app, db, Record, Material, MODULES, current_user, log_action, paraguay_now, login_required
 from features import _rows, _data, _can_caja, _page
 
 MODULES["salidas_material"] = ("Salida de material", "caja", [])
