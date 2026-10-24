@@ -968,25 +968,23 @@ def module_page(module):
     if module == "gastos":
         if request.method == "POST":
             try:
-                names=request.form.getlist("item[]"); quantities=request.form.getlist("cantidad_item[]"); prices=request.form.getlist("precio_item[]")
+                names=request.form.getlist("item[]"); quantities=request.form.getlist("cantidad_item[]"); totals=request.form.getlist("total_item[]")
                 items=[]; total=Decimal("0")
-                for name,raw_qty,raw_price in zip(names,quantities,prices):
-                    name=name.strip(); raw_qty=raw_qty.strip().replace(",","."); raw_price=raw_price.strip().replace(",",".")
-                    if not name and not raw_qty and not raw_price: continue
-                    qty=Decimal(raw_qty); price=Decimal(raw_price)
-                    if not name or qty<=0 or price<0: raise InvalidOperation()
-                    subtotal=(qty*price).quantize(Decimal("0.01"))
-                    items.append({"articulo":name,"cantidad":str(qty),"precio_unitario":str(price),"subtotal":str(subtotal)})
+                for name,raw_qty,raw_total in zip(names,quantities,totals):
+                    name=name.strip(); raw_qty=raw_qty.strip().replace(",","."); raw_total=raw_total.strip().replace(",",".")
+                    if not name and not raw_qty and not raw_total: continue
+                    qty=Decimal(raw_qty); subtotal=Decimal(raw_total)
+                    if not name or qty<=0 or subtotal<=0: raise InvalidOperation()
+                    items.append({"articulo":name,"cantidad":str(qty),"total":str(subtotal)})
                     total+=subtotal
                 if not items or total<=0: raise InvalidOperation()
                 concepto=request.form.get("concepto","").strip()
                 detalle_libre=request.form.get("detalle_concepto","").strip()
-                data={"fecha":request.form.get("fecha",""),"categoria":request.form.get("categoria","").strip(),
-                      "concepto":concepto,"detalle_concepto":detalle_libre,
+                data={"fecha":request.form.get("fecha",""),"concepto":concepto,"detalle_concepto":detalle_libre,
                       "items":items,"detalle":"; ".join(x["articulo"] for x in items),
                       "medio":request.form.get("medio","").strip(),"comprobante":request.form.get("comprobante","").strip(),
                       "origen_fondos":"cuenta_bancaria"}
-                if not data["fecha"] or not data["categoria"] or not concepto or not data["medio"]: raise InvalidOperation()
+                if not data["fecha"] or not concepto or not data["medio"]: raise InvalidOperation()
                 account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
                 if not account:
                     flash("Primero registrá la cuenta central y su saldo inicial.")
@@ -1003,11 +1001,11 @@ def module_page(module):
                 db.session.add(rec); db.session.flush()
                 account.balance-=total
                 log_action("registrar gasto y salida de dinero","gastos",rec.id,
-                    f"{concepto}; categoría {data['categoria']}; total {total}; medio {data['medio']}; cuenta central; saldo {account.balance}")
+                    f"{concepto}; artículos {len(items)}; total {total}; medio {data['medio']}; cuenta central; saldo {account.balance}")
                 db.session.commit()
                 flash("Gasto guardado. Total: Gs. "+str(total)+"; saldo bancario actualizado: Gs. "+str(account.balance))
             except (InvalidOperation,ValueError):
-                db.session.rollback(); flash("Revisá los artículos, cantidades, precios y fecha del gasto.")
+                db.session.rollback(); flash("Revisá los artículos, cantidades, totales y fecha del gasto.")
             return redirect(url_for("module_page",module="gastos"))
         items=Record.query.filter_by(module="gastos").order_by(Record.created_at.desc()).all()
         tickets_gasto=[r for r in Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all() if json.loads(r.data or "{}").get("destino_pago")=="gastos"]
@@ -1020,21 +1018,20 @@ def module_page(module):
         return render_template_string(BASE+"""
         <section class="card"><h2>Registrar gasto</h2><form method="post" id="gasto-form" class="grid">
         <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-        <div><label>Categoría / proveedor</label><input name="categoria" placeholder="Proveedor o categoría general" required></div>
         <div><label>¿A qué corresponde este gasto?</label><select name="concepto" required><option value="">Seleccionar concepto</option><option>Insumos de gomería</option><option>Viáticos</option><option>Viático para chofer</option><option>Pago por paletear a un chofer</option><option>Donación</option><option>Combustible</option><option>Repuestos</option><option>Mantenimiento</option><option>Otros gastos</option></select></div>
         <div><label>Detalle del concepto (opcional)</label><input name="detalle_concepto" placeholder="Chofer, motivo, lugar u observación"></div>
         <div><label>Medio de pago</label><select name="medio" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
         <div><label>Cuenta central</label>{% if accounts %}<input value="{{accounts[0].name or 'Cuenta central'}} · {{accounts[0].currency}} · saldo {{accounts[0].balance}}" disabled>{% else %}<input value="No registrada" disabled>{% endif %}</div>
         <div><label>Comprobante</label><input name="comprobante"></div>
         <div style="grid-column:1/-1"><h3>Artículos del gasto</h3><div id="gasto-items"><div class="grid gasto-item">
-        <div><label>Artículo / descripción</label><input name="item[]" required></div><div><label>Cantidad</label><input name="cantidad_item[]" type="number" min="0.001" step="0.001" required></div><div><label>Precio unitario (Gs.)</label><input name="precio_item[]" type="number" min="0" step="0.01" required></div>
+        <div><label>Artículo</label><input name="item[]" required></div><div><label>Cantidad</label><input name="cantidad_item[]" type="number" min="0.001" step="0.001" required></div><div><label>Total alcanzado (Gs.)</label><input name="total_item[]" type="number" min="0.01" step="0.01" required></div>
         </div></div><p><button type="button" onclick="addGastoItem()">+ Agregar artículo</button></p></div>
         <div style="align-self:end"><button>Guardar gasto</button></div></form>
         <script>function addGastoItem(){const root=document.getElementById('gasto-items');const row=root.querySelector('.gasto-item').cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');root.appendChild(row)}</script></section>
         <section class="card"><h2>Resumen de gastos · Total: Gs. {{total_gastos}}</h2><p>Incluye los gastos registrados aquí y los tickets clasificados como Gastos. Los tickets clasificados como Pago de materiales y los movimientos de caja chica marcados solo como Caja chica no se suman.</p></section>
         <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
-        <table><tr><th>Fecha</th><th>Origen</th><th>Categoría / proveedor</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Ver</th><th>Imprimir</th></tr>
-        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>Gasto</td><td>{{d.get('concepto','Otros gastos')}} · {{d.get('categoria')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · {{x.get('cantidad')}} × {{x.get('precio_unitario')}} = {{x.get('subtotal')}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
+        <table><tr><th>Fecha</th><th>Origen</th><th>Concepto</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Ver</th><th>Imprimir</th></tr>
+        {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>Gasto</td><td>{{d.get('concepto','Otros gastos')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · Cantidad: {{x.get('cantidad')}} · Total: Gs. {{x.get('total',x.get('subtotal',''))}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in tickets_gasto %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>Ticket</td><td>{{d.get('cliente',r.title)}}</td><td>{% for x in d.get('materiales',[]) %}{{x.get('material')}} · {{x.get('cantidad')}} kg · Gs. {{x.get('total')}}<br>{% endfor %}</td><td>{{d.get('medio_pago','No indicado')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
         {% for r in caja_chica_gastos %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>Caja chica</td><td>Gasto de caja chica</td><td>{{d.get('detalle')}}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
         """,title=title,items=items,tickets_gasto=tickets_gasto,caja_chica_gastos=caja_chica_gastos,total_gastos=total_gastos,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"),accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all())
