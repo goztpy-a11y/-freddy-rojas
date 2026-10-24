@@ -47,13 +47,28 @@ def pagos_diarios_materiales():
             except Exception: total_ticket=Decimal("0")
             tickets[key]={"persona":d.get("persona",""),"total":str(total_ticket),"materiales":d.get("materiales",[]),"pagado":Decimal("0"),"saldo":str(total_ticket)}
         tickets[key]["pagado"] += Decimal(str(r.amount or 0))
+    # Cargas ya registradas: permitir seleccionarlas por su número de ticket en Caja.
+    for source in source_tickets:
+        sd=_data(source)
+        t=str(sd.get("numero_ticket",sd.get("nro_ticket","CARGA-"+str(source.id))).strip() or "CARGA-"+str(source.id))
+        key=t.casefold()
+        if key not in tickets:
+            lines=[]
+            for line in (sd.get("materiales",[]) or []):
+                material_name=str(line.get("material","")).strip()
+                mat=next((m for m in mats if m.name.casefold()==material_name.casefold()),None)
+                lines.append({"material_id":mat.id if mat else "", "kg":str(line.get("cantidad",line.get("kg",""))), "material":material_name})
+            paid=sum((Decimal(str(_data(p).get("importe",p.amount or 0) or p.amount or 0)) for p in _rows("pagos_diarios") if str(_data(p).get("ticket_origen_id",""))==str(source.id)),Decimal("0"))
+            total=Decimal(str(source.amount or sd.get("total","0") or 0))
+            tickets[key]={"persona":sd.get("cliente",""),"total":str(total),"materiales":lines,"pagado":paid,"saldo":str(max(Decimal("0"),total-paid))}
+        tickets.setdefault(("CARGA-"+str(source.id)).casefold(),tickets[key])
     for ticket_data in tickets.values():
         saldo=max(Decimal("0"),Decimal(str(ticket_data["total"]))-ticket_data["pagado"]).quantize(Decimal("0.01"))
         ticket_data["saldo"]=str(saldo)
         ticket_data["pagado"]=str(ticket_data["pagado"].quantize(Decimal("0.01")))
     return _page("Pagos diarios", """
     <section class="card"><h2>Registrar pago diario por ticket</h2><form method="post" action="{{url_for('crear_pago_diario')}}" id="pago-ticket-form">
-    <div class="grid"><div><label>N.º de ticket</label><input name="ticket" id="ticket" list="cargas-ticket-list" placeholder="Ej.: CARGA-123 o número del ticket" required><datalist id="cargas-ticket-list">{% for item in source_rows %}<option value="CARGA-{{item.record.id}}">{{item.data.get("cliente","")}} · Saldo Gs. {{item.remaining}}</option>{% endfor %}</datalist><small>Si es una carga ya registrada, elegila de la lista para asociar el pago.</small></div><div><label>Cliente / proveedor</label><input name="persona" id="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div></div>
+    <div class="grid"><div><label>N.º de ticket</label><input name="ticket" id="ticket" list="cargas-ticket-list" placeholder="Ingresá el N.º exacto del ticket" autocomplete="off" required><datalist id="cargas-ticket-list">{% for item in source_rows %}<option value="{{item.data.get("numero_ticket",item.data.get("nro_ticket","CARGA-" ~ item.record.id))}}">{{item.data.get("cliente","")}} · Saldo Gs. {{item.remaining}}</option>{% endfor %}</datalist><small>Si es una carga ya registrada, elegila de la lista para asociar el pago.</small></div><div><label>Cliente / proveedor</label><input name="persona" id="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div></div>
     <h3>Materiales</h3><table><tr><th>Material</th><th>Kg</th><th>Precio</th><th>Importe</th><th></th></tr><tbody id="material-lines">
     {% for n in range(2) %}<tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in mats %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr>{% endfor %}</tbody></table>
     <template id="material-row"><tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in mats %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr></template>
@@ -61,8 +76,8 @@ def pagos_diarios_materiales():
     <section class="card"><h2>Cargas registradas pendientes de pago</h2>
     <p>Estas son las cargas que ya guardaste en Registrar carga. Podés registrar un pago total o parcial sin volver a cargar los materiales.</p>
     <div style="overflow-x:auto"><table><tr><th>Fecha de carga</th><th>N.º de carga</th><th>Proveedor</th><th>Materiales</th><th>Total</th><th>Pagado</th><th>Saldo pendiente</th><th>Agregar pago</th></tr>
-    {% for item in source_rows %}{% set source=item.record %}{% set sd=item.data %}<tr><td>{{local_time(source.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>Carga #{{source.id}}</td><td>{{sd.get('cliente','')}}</td><td>{% for line in sd.get('materiales',[]) %}{{line.get('material','')}} · {{line.get('cantidad','')}} kg<br>{% endfor %}</td><td>{{source.amount}}</td><td>{{item.paid}}</td><td>{{item.remaining}}</td><td><form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
-    <input type="hidden" name="source_ticket_id" value="{{source.id}}"><input type="hidden" name="ticket" value="CARGA-{{source.id}}"><input type="hidden" name="persona" value="{{sd.get('cliente','')}}"><input type="hidden" name="total" value="{{source.amount}}">
+    {% for item in source_rows %}{% set source=item.record %}{% set sd=item.data %}<tr><td>{{local_time(source.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{sd.get("numero_ticket",sd.get("nro_ticket","CARGA-" ~ source.id))}}</td><td>{{sd.get('cliente','')}}</td><td>{% for line in sd.get('materiales',[]) %}{{line.get('material','')}} · {{line.get('cantidad','')}} kg<br>{% endfor %}</td><td>{{source.amount}}</td><td>{{item.paid}}</td><td>{{item.remaining}}</td><td><form method="post" action="{{url_for('crear_pago_diario')}}" class="grid">
+    <input type="hidden" name="source_ticket_id" value="{{source.id}}"><input type="hidden" name="ticket" value="{{sd.get("numero_ticket",sd.get("nro_ticket","CARGA-" ~ source.id))}}"><input type="hidden" name="persona" value="{{sd.get('cliente','')}}"><input type="hidden" name="total" value="{{source.amount}}">
     <div><label>Importe a pagar (Gs.)</label><input name="pago" type="number" min="0.01" max="{{item.remaining}}" step="0.01" value="{{item.remaining}}" required></div>
     <div><label>Comprobante (opcional)</label><input name="comprobante" placeholder="N.º de comprobante"></div>
     <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
