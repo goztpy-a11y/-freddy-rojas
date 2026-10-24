@@ -988,7 +988,7 @@ def module_page(module):
         <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('module_page',module='auditoria')}}">Limpiar</a></div></form>
         <p><button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p><h3>Operaciones registradas ({{results|length}})</h3>
         <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}<b>{{k}}:</b> {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
-        <section class="card"><h2>Registro de acciones y cambios</h2><table><tr><th>Fecha/hora</th><th>Usuario ID</th><th>Acción</th><th>Sector</th><th>Detalle</th></tr>{% for x in logs %}<tr><td>{{local_time(x.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{x.user_id or 'Sistema'}}</td><td>{{x.action}}</td><td>{{MODULES.get(x.module,(x.module,))[0]}}</td><td>{{x.detail}}</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
+</main><footer>El Toro S.A.</footer></body></html>""",title=title,q=q,since=since,until=until,amount_filter=amount_filter,results=results,logs=logs)
     if module == "repuestos":
         if request.method=="POST":
             name=request.form.get("nombre","").strip()
