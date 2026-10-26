@@ -348,7 +348,8 @@ def listado_proveedores():
         supplier=str(td.get("cliente") or "").strip().casefold()
         if not supplier: continue
         entry=supplier_totals.setdefault(supplier,{"kg":Decimal("0"),"monto":Decimal("0"),"pagado":Decimal("0")})
-        entry["monto"]+=Decimal(str(td.get("total",ticket.amount) or 0))
+        try: entry["monto"]+=Decimal(str(td.get("total",ticket.amount) or 0))
+        except (InvalidOperation,ValueError): pass
         for line in (td.get("materiales",[]) or []):
             try: entry["kg"]+=Decimal(str(line.get("cantidad",line.get("kg",0)) or 0).replace(",","."))
             except (InvalidOperation,ValueError,AttributeError): pass
