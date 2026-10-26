@@ -62,8 +62,8 @@ MODULES = {
   ("importe","Importe solicitado","number",True),("cuenta_cliente","Cuenta bancaria del proveedor","text",True),
   ("comprobante","Referencia del comprobante / archivo pendiente","text",False),("observaciones","Observaciones","text",False)]),
  "cuentas_empresa": ("Cuentas bancarias de El Toro S.A.", "admin", [
-  ("nombre","Nombre de la cuenta (opcional)","text",False),("banco","Banco (opcional)","text",False),("numero","Número / alias de cuenta (opcional)","text",False),
-  ("moneda","Moneda (PYG / USD)","text",True),("saldo_inicial","Saldo inicial","number",True)]),
+  ("nombre","Nombre de la cuenta","text",True),("banco","Banco (opcional)","text",False),("numero","Número / alias de cuenta (opcional)","text",False),
+  ("saldo_inicial_pyg","Saldo inicial en PYG","number",False),("saldo_inicial_usd","Saldo inicial en USD","number",False)]),
  "gastos": ("Gastos", "caja", [
   ("fecha","Fecha del gasto","date",True),("categoria","Categoría","text",True),("detalle","Detalle completo","text",True),
   ("importe","Importe","number",True),("medio","Medio de pago / cuenta utilizada","text",False),("comprobante","Comprobante","text",False)]),
@@ -72,9 +72,13 @@ MODULES = {
   ("cantidad","Kilogramos","number",True),("chofer","Chofer","text",True),("camion","Camión","text",True)]),
  "cuentas_pagar": ("Cuentas por pagar", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),
+  ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
+  ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
-  ("cliente","Proveedor","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
+  ("cliente","Cliente / quien debe","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
+  ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
+  ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("estado","Estado / seguimiento","select",False)]),
  "cheques": ("Cheques adelantados", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("numero","Número de cheque","text",True),("importe","Importe","number",True),
@@ -124,6 +128,8 @@ class CompanyAccount(db.Model):
     currency = db.Column(db.String(10), nullable=False, default="PYG")
     opening_balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     balance = db.Column(db.Numeric(18, 2), nullable=False, default=0)
+    opening_balance_usd = db.Column(db.Numeric(18, 2), nullable=False, default=0)
+    balance_usd = db.Column(db.Numeric(18, 2), nullable=False, default=0)
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -168,6 +174,16 @@ def read_system_settings():
 with app.app_context():
     db.create_all()
     from sqlalchemy import inspect
+    if "company_account" in inspect(db.engine).get_table_names():
+        account_cols = {c["name"] for c in inspect(db.engine).get_columns("company_account")}
+        with db.engine.begin() as conn:
+            if "opening_balance_usd" not in account_cols:
+                conn.exec_driver_sql("ALTER TABLE company_account ADD COLUMN opening_balance_usd NUMERIC(18, 2) NOT NULL DEFAULT 0")
+            if "balance_usd" not in account_cols:
+                conn.exec_driver_sql("ALTER TABLE company_account ADD COLUMN balance_usd NUMERIC(18, 2) NOT NULL DEFAULT 0")
+            conn.exec_driver_sql("UPDATE company_account SET opening_balance_usd = opening_balance WHERE UPPER(currency) = 'USD' AND opening_balance_usd = 0 AND opening_balance > 0")
+            conn.exec_driver_sql("UPDATE company_account SET balance_usd = balance WHERE UPPER(currency) = 'USD' AND balance_usd = 0 AND balance > 0")
+            conn.exec_driver_sql("UPDATE company_account SET opening_balance = 0, balance = 0 WHERE UPPER(currency) = 'USD' AND (opening_balance_usd > 0 OR balance_usd > 0)")
     if "material" in inspect(db.engine).get_table_names():
         cols = {c["name"] for c in inspect(db.engine).get_columns("material")}
         if "wholesale_price" not in cols:
@@ -213,6 +229,8 @@ def allowed(module):
                               "gomeria_inventario", "gomeria_movimientos"}
     if assigned == {"inventario"}:
         return module in inventory_only_modules
+    if module == "cuentas_cobrar" and "caja" in assigned:
+        return True
     required_area = MODULES.get(module, (None, module))[1]
     return required_area in assigned
 
@@ -511,7 +529,7 @@ footer{display:block!important;color:#8b99aa}
 <a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a><a href="{{url_for('registrar_ticket')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
-{% if allowed('caja') %}<a href="{{url_for('module_page',module='tickets')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
+{% if allowed('caja') %}<a href="{{url_for('module_page',module='tickets')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('module_page',module='cuentas_cobrar')}}">Cuentas por cobrar</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('servicios_gomeria')}}">Servicio de gomería</a><a href="{{url_for('gomeria_inventario')}}">Inventario de materiales</a><a href="{{url_for('gomeria_movimientos')}}">Movimientos de materiales</a>{% endif %}
@@ -783,25 +801,33 @@ def module_page(module):
     if module == "cuentas_empresa":
         if request.method == "POST":
             try:
-                if CompanyAccount.query.count() >= 1:
-                    flash("Ya existe la cuenta central. No se pueden crear cuentas adicionales.")
-                    return redirect(url_for("module_page",module=module))
-                currency=request.form.get("moneda","").strip().upper()
-                if currency not in ("PYG","USD"): raise InvalidOperation()
-                bal = Decimal(request.form.get("saldo_inicial","").strip().replace(",", "."))
-                if bal < 0: raise InvalidOperation()
-                a = CompanyAccount(name=request.form.get("nombre","").strip(),bank=request.form.get("banco","").strip(),
-                    number=request.form.get("numero","").strip(),currency=currency,
-                    opening_balance=bal,balance=bal)
-                db.session.add(a); db.session.flush(); log_action("crear cuenta empresa","cuentas_empresa",a.id,a.name or "Cuenta central"); db.session.commit()
-                flash("Cuenta central creada."); return redirect(url_for("module_page",module=module))
+                name=request.form.get("nombre","").strip()
+                if not name: raise InvalidOperation()
+                bal_pyg=Decimal((request.form.get("saldo_inicial_pyg","0") or "0").strip().replace(",", "."))
+                bal_usd=Decimal((request.form.get("saldo_inicial_usd","0") or "0").strip().replace(",", "."))
+                if bal_pyg < 0 or bal_usd < 0: raise InvalidOperation()
+                a = CompanyAccount(name=name,bank=request.form.get("banco","").strip(),
+                    number=request.form.get("numero","").strip(),currency="PYG",
+                    opening_balance=bal_pyg,balance=bal_pyg,
+                    opening_balance_usd=bal_usd,balance_usd=bal_usd)
+                db.session.add(a); db.session.flush()
+                log_action("crear cuenta empresa","cuentas_empresa",a.id,a.name)
+                db.session.commit()
+                flash("Cuenta bancaria creada con sus saldos en PYG y USD.")
+                return redirect(url_for("module_page",module=module))
             except (InvalidOperation,ValueError,KeyError):
-                db.session.rollback(); flash("Ingresá PYG o USD y un saldo inicial válido no negativo.")
+                db.session.rollback(); flash("Ingresá el nombre y saldos iniciales válidos no negativos.")
         items=CompanyAccount.query.order_by(CompanyAccount.id.asc()).all()
         return render_template_string(BASE+"""
-        <section class="card"><h2>{{title}}</h2><p class="warn">Esta es la única cuenta central de El Toro S.A. Se usa para descontar pagos y gastos. Solo Moneda y Saldo inicial son obligatorios; los demás datos son opcionales. El historial se conserva.</p>
-        {% if not items %}<form method="post" class="grid">{% for key,label,kind,req in fields %}<div><label>{{label}}</label>{% if key=='moneda' %}<select name="moneda" required><option value="PYG">PYG - Guaraníes</option><option value="USD">USD - Dólares</option></select>{% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}<div style="align-self:end"><button class="btn">Crear cuenta central</button></div></form>{% else %}<p>La cuenta central ya está registrada. No se pueden crear cuentas adicionales.</p>{% endif %}</section>
-        <section class="card"><h2>Cuenta central y saldo</h2><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Moneda</th><th>Saldo inicial</th><th>Saldo actual</th></tr>{% for a in items %}<tr><td>{{a.name or "Cuenta central"}}</td><td>{{a.bank or "—"}}</td><td>{{a.number or "—"}}</td><td>{{a.currency}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,items=items)
+        <section class="card"><h2>{{title}}</h2><p>Podés registrar varias cuentas. Cada cuenta mantiene por separado su saldo en guaraníes y dólares. Los saldos existentes se conservan.</p>
+        <form method="post" class="grid">
+        <div><label>Nombre de la cuenta</label><input name="nombre" required></div>
+        <div><label>Banco (opcional)</label><input name="banco"></div><div><label>Número / alias (opcional)</label><input name="numero"></div>
+        <div><label>Saldo inicial PYG</label><input name="saldo_inicial_pyg" type="number" min="0" step="0.01" value="0" required></div>
+        <div><label>Saldo inicial USD</label><input name="saldo_inicial_usd" type="number" min="0" step="0.01" value="0" required></div>
+        <div style="align-self:end"><button class="btn">Agregar cuenta</button></div></form></section>
+        <section class="card"><h2>Cuentas bancarias y saldos</h2><div style="overflow-x:auto"><table><tr><th>Cuenta</th><th>Banco</th><th>Número/alias</th><th>Saldo inicial PYG</th><th>Saldo actual PYG</th><th>Saldo inicial USD</th><th>Saldo actual USD</th></tr>
+        {% for a in items %}<tr><td>{{a.name or "Cuenta central"}}</td><td>{{a.bank or "—"}}</td><td>{{a.number or "—"}}</td><td>{{a.opening_balance}}</td><td>{{a.balance}}</td><td>{{a.opening_balance_usd}}</td><td>{{a.balance_usd}}</td></tr>{% else %}<tr><td colspan="7">Todavía no hay cuentas registradas.</td></tr>{% endfor %}</table></div></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,items=items)
     if module == "inventario":
         if request.method == "POST" and request.form.get("accion") == "agregar_stock":
             try:
@@ -1144,34 +1170,47 @@ def module_page(module):
                     if original.module!=module: abort(400)
                     amount=Decimal(request.form.get("importe","").replace(",","."))
                     original_data=json.loads(original.data or "{}")
+                    currency=str(original_data.get("moneda","PYG") or "PYG").upper()
+                    if currency not in ("PYG","USD"): raise InvalidOperation()
+                    rate=Decimal((request.form.get("tipo_cambio") or original_data.get("tipo_cambio") or "1").replace(",","."))
+                    if rate<=0: raise InvalidOperation()
                     paid=sum((Decimal(str(json.loads(p.data or "{}").get("importe",0))) for p in payment_rows
                               if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rid)),Decimal("0"))
                     balance=original.amount-paid
                     if amount<=0 or amount>balance: raise InvalidOperation()
+                    account_id=int(request.form.get("company_account_id","0"))
+                    central_account=db.session.get(CompanyAccount,account_id)
+                    if not central_account or not central_account.active:
+                        flash("Seleccioná una cuenta bancaria activa."); return redirect(url_for("module_page",module=module))
+                    account_balance=Decimal(str((central_account.balance_usd if currency=="USD" else central_account.balance) or 0))
+                    is_collection=(module=="cuentas_cobrar")
+                    if not is_collection and amount>account_balance:
+                        flash("Saldo insuficiente en la cuenta seleccionada para esa moneda."); return redirect(url_for("module_page",module=module))
+                    amount_pyg=(amount*rate).quantize(Decimal("0.01")) if currency=="USD" else amount
                     paydata={"modulo_origen":module,"registro_id":rid,"fecha":request.form.get("fecha",""),
                         "beneficiario":original_data.get("beneficiario",original_data.get("cliente","")),
                         "concepto":original_data.get("concepto",""),"numero_cheque":original_data.get("numero",""),
-                        "importe":str(amount),"medio":request.form.get("medio","Efectivo"),"detalle":request.form.get("detalle","")}
-                    is_collection=(module=="cuentas_cobrar")
+                        "importe":str(amount),"moneda":currency,"tipo_cambio":str(rate),"importe_pyg":str(amount_pyg),
+                        "medio":request.form.get("medio","Efectivo"),"detalle":request.form.get("detalle",""),
+                        "company_account_id":central_account.id,"cuenta_empresa":central_account.name or "Cuenta bancaria"}
                     pay_title=("Cobro · " if is_collection else "Pago · ")+original.title
-                    central_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first() if not is_collection else None
-                    if not is_collection:
-                        if not central_account:
-                            flash("Primero registrá la cuenta central en Cuentas bancarias de El Toro S.A."); return redirect(url_for("module_page",module=module))
-                        if amount>Decimal(str(central_account.balance or 0)):
-                            flash("Saldo insuficiente en la cuenta central para registrar este pago."); return redirect(url_for("module_page",module=module))
-                        paydata["company_account_id"]=central_account.id
-                        paydata["cuenta_empresa"]=central_account.name or "Cuenta central"
                     pay=Record(module=payment_module,title=pay_title,data=json.dumps(paydata,ensure_ascii=False),
-                        amount=amount,status="Cobrado" if is_collection else "Pagado",company_account_id=central_account.id if central_account else None,created_by=current_user().id)
+                        amount=amount,status="Cobrado" if is_collection else "Pagado",company_account_id=central_account.id,created_by=current_user().id)
                     db.session.add(pay); db.session.flush()
-                    if central_account: central_account.balance-=amount
+                    if is_collection:
+                        if currency=="USD": central_account.balance_usd+=amount
+                        else: central_account.balance+=amount
+                    else:
+                        if currency=="USD": central_account.balance_usd-=amount
+                        else: central_account.balance-=amount
                     new_balance=balance-amount
                     original.status="Pagado" if new_balance==0 else ("Pago parcial" if not is_collection else "En proceso")
-                    log_action("registrar cobro" if is_collection else "registrar pago parcial/final",module,original.id,f"Importe {amount}; saldo {new_balance}; medio {paydata['medio']}")
+                    log_action("registrar cobro" if is_collection else "registrar pago parcial/final",module,original.id,
+                        f"Importe {amount} {currency}; equivalente PYG {amount_pyg}; cuenta {central_account.name}; saldo pendiente {new_balance}")
                     if not is_collection:
-                        log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title+"; importe "+str(amount))
-                    db.session.commit(); flash("Pago registrado. Saldo restante: Gs. "+str(new_balance))
+                        log_action("salida de dinero registrada","pagos_cuentas",pay.id,pay.title)
+                    db.session.commit()
+                    flash(("Cobro" if is_collection else "Pago")+" registrado. Saldo pendiente: "+str(new_balance)+" "+currency+". Saldo de cuenta actualizado.")
                 except (InvalidOperation,ValueError):
                     db.session.rollback(); flash("No se pudo registrar: verificá el importe y el saldo pendiente.")
                 return redirect(url_for("module_page",module=module))
@@ -1210,6 +1249,15 @@ def module_page(module):
             try:
                 amount=Decimal(data.get("importe","0").replace(",","."))
                 if amount<=0: raise InvalidOperation()
+                if module in ("cuentas_pagar","cuentas_cobrar"):
+                    currency=str(data.get("moneda","PYG") or "PYG").upper()
+                    if currency not in ("PYG","USD"): raise InvalidOperation()
+                    rate=Decimal((data.get("tipo_cambio") or "1").replace(",","."))
+                    if rate<=0: raise InvalidOperation()
+                    if currency=="PYG": rate=Decimal("1")
+                    data["moneda"]=currency
+                    data["tipo_cambio"]=str(rate)
+                    data["importe_pyg"]=str((amount*rate).quantize(Decimal("0.01")) if currency=="USD" else amount)
                 status=data.get("estado","Pendiente") if module in ("cuentas_cobrar","cheques") else "Pendiente"
                 rec=Record(module=module,title=(data.get("beneficiario") or data.get("cliente") or data.get("concepto") or data.get("numero") or title)[:220],
                     data=json.dumps(data,ensure_ascii=False),amount=amount,status=status,created_by=current_user().id)
@@ -1240,16 +1288,20 @@ def module_page(module):
         <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
         {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
         {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Incluye cheque adelantado</label>
-        {% elif kind=='select' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Vencido</option></select>
-        {% elif kind=='select' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
+        {% elif key=='moneda' and module in ('cuentas_pagar','cuentas_cobrar') %}<select name="{{key}}" onchange="const r=this.form.querySelector('[name=tipo_cambio]');if(r){r.required=this.value==='USD';if(this.value==='PYG')r.value='1';else if(r.value==='1')r.value='';}"><option value="PYG">PYG · Guaraníes</option><option value="USD">USD · Dólares</option></select>
+        {% elif key=='tipo_cambio' and module in ('cuentas_pagar','cuentas_cobrar') %}<input name="{{key}}" type="number" min="0.000001" step="0.000001" value="1" placeholder="Ej.: 7300">
+        {% elif key=='estado' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Vencido</option></select>
+        {% elif key=='estado' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
         {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}
         <div style="align-self:end"><button>Guardar registro</button></div></form></section>
         <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
-        <table><tr><th>Fecha</th><th>Registro</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
-        {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{r.amount}}</td><td>{{paid}}</td><td><b>{{balance}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><input name="fecha" type="date" value="{{today}}" required><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha</th><th>Registro</th><th>Moneda</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
+        {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{d.get('moneda','PYG')}}</td><td>{{r.amount}} {{d.get('moneda','PYG')}}</td><td>{{paid}} {{d.get('moneda','PYG')}}</td><td><b>{{balance}} {{d.get('moneda','PYG')}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><label>Importe ({{d.get('moneda','PYG')}})</label><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><label>Cuenta bancaria</label><select name="company_account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · PYG {{a.balance}} · USD {{a.balance_usd}}</option>{% endfor %}</select><input name="fecha" type="date" value="{{today}}" required><label>Tipo de cambio USD → PYG</label><input name="tipo_cambio" type="number" min="0.000001" step="0.000001" value="{{d.get('tipo_cambio','1')}}" {% if d.get('moneda','PYG')=='USD' %}required{% endif %}><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago/cobro</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Movimientos de pago</h2><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / proveedor</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Imprimir</th></tr>
         {% for p in payment_rows %}{% set d=decode(p) %}{% if d.get('modulo_origen')==module %}<tr><td>{{d.get('fecha')}} · {{local_time(p.created_at).strftime('%H:%M:%S')}}</td><td>#{{d.get('registro_id')}}</td><td>{{d.get('beneficiario')}}</td><td>{{d.get('concepto') or d.get('numero_cheque')}}</td><td>{{p.amount}}</td><td>{{d.get('medio')}}</td><td><a class="btn" href="{{url_for('print_record',rid=p.id)}}">Imprimir</a></td></tr>{% endif %}{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>
-        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
+        """,title=title,fields=fields,module=module,summaries=summaries,payment_rows=payment_rows,
+            accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).all(),
+            today=paraguay_now().strftime("%Y-%m-%d"),decode=lambda r:json.loads(r.data or "{}"))
     if request.method == "POST":
         data = {key: ("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip() for key,label,kind,req in fields}
         if module == "cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
