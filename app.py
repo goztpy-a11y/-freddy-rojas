@@ -1242,6 +1242,8 @@ def module_page(module):
                 return redirect(url_for("module_page",module=module))
             data={key:("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip()
                   for key,label,kind,req in fields}
+            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("moneda"): data["moneda"]="PYG"
+            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("tipo_cambio"): data["tipo_cambio"]="1"
             if module=="cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
             if module=="cheques" and not data.get("estado"): data["estado"]="Pendiente"
             for key,label,kind,req in fields:
@@ -1252,7 +1254,9 @@ def module_page(module):
                 if module in ("cuentas_pagar","cuentas_cobrar"):
                     currency=str(data.get("moneda","PYG") or "PYG").upper()
                     if currency not in ("PYG","USD"): raise InvalidOperation()
-                    rate=Decimal((data.get("tipo_cambio") or "1").replace(",","."))
+                    raw_rate=data.get("tipo_cambio","").strip()
+                    if currency=="USD" and not raw_rate: raise InvalidOperation()
+                    rate=Decimal((raw_rate or "1").replace(",","."))
                     if rate<=0: raise InvalidOperation()
                     if currency=="PYG": rate=Decimal("1")
                     data["moneda"]=currency
