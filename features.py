@@ -958,9 +958,9 @@ def ventas_caja():
                 raise InvalidOperation()
             account=None
             if medio=="Transferencia":
-                try: account=db.session.get(CompanyAccount,int(request.form.get("account_id","")))
-                except (ValueError,TypeError): account=None
-                if not account or not account.active:
+                # Las ventas por transferencia ingresan siempre a la cuenta principal activa.
+                account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                if not account:
                     raise InvalidOperation()
                 account.balance=Decimal(str(account.balance or 0))+amount
             data={"cliente":cliente,"concepto":concepto,"fecha":fecha,"importe":str(amount),"medio":medio,
@@ -984,18 +984,19 @@ def ventas_caja():
             flash("Revisá el cliente, concepto, fecha, importe y cuenta de destino.")
         return redirect(url_for("ventas_caja"))
     rows=_rows("ventas_caja")
-    accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all()
+    accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).all()
+    main_account=accounts[0] if accounts else None
     balance=_caja_chica_balance()
     return _page("Registrar venta", """
     <section class="card"><h2>Registrar venta</h2><form method="post" class="grid">
     <div><label>Cliente</label><input name="cliente" required></div><div><label>Concepto de la venta</label><input name="concepto" required></div>
     <div><label>Importe (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
     <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-    <div><label>Forma de pago</label><select name="medio" id="sale-method" required onchange="document.getElementById('sale-account-wrap').style.display=this.value==='Transferencia'?'block':'none';"><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
-    <div id="sale-account-wrap" style="display:none"><label>Cuenta bancaria que recibirá el dinero</label><select name="account_id"><option value="">Seleccionar cuenta</option>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · saldo PYG {{a.balance}}</option>{% endfor %}</select></div>
+    <div><label>Forma de pago</label><select name="medio" id="sale-method" required><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
+    <div id="sale-account-wrap"><label>Cuenta principal que recibirá las transferencias</label><input value="{{main_account.name if main_account else 'No hay una cuenta bancaria activa'}}" readonly></div>
     <div style="align-self:end"><button>Guardar venta</button></div></form><p><b>Saldo actual de Caja chica:</b> Gs. {{balance}}</p></section>
     <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
-    """,rows=rows,accounts=accounts,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
+    """,rows=rows,accounts=accounts,main_account=main_account,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 
 # Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
