@@ -1277,8 +1277,7 @@ def _professional_reports():
         <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{background:#dce6f1}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{padding:9px;border-bottom:1px solid #e1e8f0;text-align:left;vertical-align:top;white-space:normal}</style>
         <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para abrir su informe. Los registros se muestran solamente después de entrar al informe correspondiente.</p>
         <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{{url_for('reports',sector=key)}}">Abrir informe</a></p></div>{% endfor %}</div></section>
-        {% if sector or q or since or until %}
-        <section class="card"><h2>{% if sector %}Informe: {% else %}Resultados de búsqueda{% endif %}{% if sector %}{{dict(available).get(sector,sector)}}{% endif %}</h2>
+        <section class="card"><h2>{% if sector %}Informe: {{dict(available).get(sector,sector)}}{% elif q or since or until %}Resultados de búsqueda{% else %}Buscar en informes{% endif %}</h2>
         <form method="get" class="grid">
           <div><label>Buscar en los datos de los informes</label><input name="q" value="{{q}}" placeholder="Proveedor, material, camión, ticket, importe..."></div>
           <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for key,label in available %}<option value="{{key}}" {% if sector==key %}selected{% endif %}>{{label}}</option>{% endfor %}</select></div>
@@ -1286,11 +1285,13 @@ def _professional_reports():
           <div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
           <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('reports')}}">Volver a sectores</a></div>
         </form>
+        {% if sector or q or since or until %}
         <p><b>Registros encontrados: {{results|length}}</b> <button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
         <div style="overflow-x:auto"><table class="report-table"><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Proveedor / concepto</th><th>Estado</th><th>Monto</th><th>Acciones</th></tr>
         {% for row in results %}<tr><td>{{row.when.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{row.label}}</td><td>{{row.rec.title}}</td><td>{{row.concept}}</td><td>{{row.rec.status}}</td><td>{{row.rec.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=row.rec.id)}}">Ver detalle</a> <a class="btn" href="{{url_for('print_record',rid=row.rec.id)}}">Imprimir</a></td></tr>
-        {% else %}<tr><td colspan="7">No se encontraron registros con estos filtros.</td></tr>{% endfor %}</table></div></section>
-        {% endif %}</main><footer>El Toro S.A. · Informes de gestión</footer></body></html>
+        {% else %}<tr><td colspan="7">No se encontraron registros con estos filtros.</td></tr>{% endfor %}</table></div>
+        {% else %}<p>Usá el buscador para consultar registros o elegí un sector y tocá <b>Abrir informe</b>. Los registros se mantienen guardados.</p>{% endif %}
+        </section></main><footer>El Toro S.A. · Informes de gestión</footer></body></html>
         """,title="Informes",available=available,q=q,sector=sector,since=since,until=until,results=results,searched=searched)
     def report_module_pro(module):
         if module=="cobros_cuentas": return redirect(url_for("report_module",module="cuentas_cobrar"))
