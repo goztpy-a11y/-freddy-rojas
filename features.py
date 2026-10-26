@@ -1230,13 +1230,66 @@ def _professional_reports():
     original_reports=app.view_functions.get("reports")
     original_module_report=app.view_functions.get("report_module")
     def reports_pro():
-        available=[(key,("Informe de pagos" if key=="pagos_cuentas" else meta[0])) for key,meta in MODULES.items() if allowed(key) and key not in ("cobros_cuentas", "flota", "mantenimiento")]
+        special_labels={
+            "combustible_stock":"Stock de combustible","combustible_camion":"Combustible por camión",
+            "ventas_combustible":"Ventas de combustible","gomeria_servicios":"Servicios de gomería",
+            "gomeria_movimientos":"Movimientos de inventario de gomería","gomeria_inventario":"Inventario de repuestos hidráulicos",
+            "flota_equipo":"Camiones y maquinaria","flota":"Control de camiones y maquinarias",
+            "mantenimiento":"Mantenimiento","lecturas_equipo":"Lecturas de camiones/maquinaria",
+            "prestamos":"Préstamos","prestamos_pagos":"Pagos de préstamos","fletes":"Fletes",
+            "pagos_diarios":"Pagos diarios y por ticket","pagos_cuentas":"Informe de pagos","caja_chica":"Caja chica",
+            "ventas_caja":"Ventas de Caja","planillas":"Planillas","tickets_entrada":"Salida / entrada de materiales",
+            "gastos":"Gastos","proveedores":"Proveedores","clientes":"Clientes","tickets":"Tickets registrados",
+            "inventario":"Inventario de materiales","materiales":"Materiales","repuestos":"Inventario de repuestos hidráulicos",
+            "movimientos_stock":"Movimientos de stock","cheques":"Cheques adelantados","solicitudes":"Solicitudes de pago",
+            "cuentas_pagar":"Cuentas por pagar","cuentas_cobrar":"Cuentas por cobrar","ventas":"Ventas de combustible",
+            "gomeria":"Gomería y servicios","gomeria_camiones":"Gomería por camión","gomeria_movimientos":"Movimientos de inventario de gomería",
+            "auditoria":"Revisión y auditoría"
+        }
+        q=request.args.get("q","").strip().casefold()
+        sector=request.args.get("sector","").strip()
+        since=request.args.get("desde","").strip()
+        until=request.args.get("hasta","").strip()
+        is_admin=current_user().role=="admin"
+        actual_modules={str(row[0]) for row in db.session.query(Record.module).distinct().all() if row and row[0]}
+        keys=set(MODULES.keys()) | actual_modules | set(special_labels.keys())
+        if not is_admin:
+            keys={key for key in keys if (key in MODULES and allowed(key))}
+        available=sorted([(key, MODULES.get(key,(special_labels.get(key,key.replace("_"," ").title()),))[0] if key in MODULES else special_labels.get(key,key.replace("_"," ").title())) for key in keys],key=lambda x:x[1].casefold())
+        results=[]
+        for rec in Record.query.order_by(Record.created_at.desc()).all():
+            if not is_admin and not (rec.module in keys or allowed(rec.module)):
+                continue
+            data=_data(rec)
+            dt=local_time(rec.created_at)
+            if sector and rec.module!=sector: continue
+            if since and _record_date(rec,data).strftime("%Y-%m-%d")<since: continue
+            if until and _record_date(rec,data).strftime("%Y-%m-%d")>until: continue
+            hay=" ".join([rec.title or "",rec.module or "",rec.status or "",str(rec.amount or ""),rec.data or ""]).casefold()
+            if q and q not in hay: continue
+            label=MODULES.get(rec.module,(special_labels.get(rec.module,rec.module.replace("_"," ").title()),))[0]
+            concept=(data.get("proveedor") or data.get("nombre_proveedor") or data.get("cliente") or data.get("persona") or data.get("concepto") or data.get("detalle") or data.get("material") or data.get("camion") or data.get("equipo") or rec.title or label)
+            results.append({"rec":rec,"data":data,"label":label,"concept":str(concept),"when":dt})
+        searched=bool(q or sector or since or until)
+        if not searched:
+            results=results[:200]
         return render_template_string(BASE+"""
-        <section class="card"><h2>Informes por sector</h2><p>Consultá los movimientos y compará los resultados de cada sector.</p>
-        <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{color:#111!important;background:#dce6f1;border-color:#b6c7da}.analytics-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:16px 0}.analytics-kpi{padding:15px;border:1px solid #e1e8f0;border-radius:11px;background:#f8fafd}.analytics-kpi span{display:block;font-size:11px;color:#62748a;font-weight:700}.analytics-kpi strong{display:block;font-size:22px;color:#173d67;margin-top:5px}.trend-up{color:#16805d;font-weight:800}.trend-down{color:#b54747;font-weight:800}.trend-flat{color:#64748b;font-weight:800}.analytics-table{margin:12px 0 20px}.analytics-table td,.analytics-table th{white-space:normal}.analytics-note{color:#687b91;font-size:12px;margin:8px 0 14px}@media(max-width:600px){.analytics-kpi{padding:11px}.analytics-kpi strong{font-size:18px}}</style>
-        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn report-open" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
-        <p><a class="btn report-open" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informes",available=available)
-
+        <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{background:#dce6f1}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{padding:9px;border-bottom:1px solid #e1e8f0;text-align:left;vertical-align:top;white-space:normal}</style>
+        <section class="card"><h2>Informes por sector</h2><p>Los informes muestran los registros guardados en el sistema. Los nuevos movimientos se incorporan automáticamente al informe de su sector.</p>
+        <form method="get" class="grid">
+          <div><label>Buscar en todos los datos</label><input name="q" value="{{q}}" placeholder="Proveedor, material, camión, ticket, importe..."></div>
+          <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for key,label in available %}<option value="{{key}}" {% if sector==key %}selected{% endif %}>{{label}}</option>{% endfor %}</select></div>
+          <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div>
+          <div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
+          <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('reports')}}">Limpiar</a></div>
+        </form>
+        <p><b>{% if searched %}Resultados encontrados{% else %}Registros recientes{% endif %}: {{results|length}}</b> <button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
+        <div style="overflow-x:auto"><table class="report-table"><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Proveedor / concepto</th><th>Estado</th><th>Monto</th><th>Acciones</th></tr>
+        {% for row in results %}<tr><td>{{row.when.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{row.label}}</td><td>{{row.rec.title}}</td><td>{{row.concept}}</td><td>{{row.rec.status}}</td><td>{{row.rec.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=row.rec.id)}}">Ver detalle</a> <a class="btn" href="{{url_for('print_record',rid=row.rec.id)}}">Imprimir</a></td></tr>
+        {% else %}<tr><td colspan="7">No se encontraron registros con estos filtros.</td></tr>{% endfor %}</table></div></section>
+        <section class="card"><h2>Consultar un sector</h2><p>Seleccioná un sector para ver sus movimientos guardados.</p><div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn report-open" href="{{url_for('reports',sector=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
+        <p><a class="btn" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A. · Informes de gestión</footer></body></html>
+        """,title="Informes",available=available,q=q,sector=sector,since=since,until=until,results=results,searched=searched)
     def report_module_pro(module):
         if module=="cobros_cuentas": return redirect(url_for("report_module",module="cuentas_cobrar"))
         if module not in MODULES: abort(404)
