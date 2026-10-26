@@ -1777,7 +1777,7 @@ def auditoria_informes():
     q=request.args.get("q","").strip().casefold()
     since=request.args.get("desde","")
     until=request.args.get("hasta","")
-    financial_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","cobros_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","tickets_entrada","ventas_caja","planillas","cheques"}
+    financial_modules=set(MODULES.keys()) | {"pagos_diarios","gastos","caja_chica","pagos_cuentas","cobros_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","tickets_entrada","ventas_caja","planillas","cheques","solicitudes","cuentas_pagar","cuentas_cobrar","ventas","combustible","gomeria","repuestos","movimientos_stock","auditoria"}
     rows=[]
     for rec in Record.query.filter(Record.module.in_(financial_modules)).order_by(Record.created_at.desc()).all():
         data={}
