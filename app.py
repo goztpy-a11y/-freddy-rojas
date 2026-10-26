@@ -71,7 +71,7 @@ MODULES = {
   ("fecha","Fecha","date",True),("destino","Empresa / destino","text",True),("material","Material","text",True),
   ("cantidad","Kilogramos","number",True),("chofer","Chofer","text",True),("camion","Camión","text",True)]),
  "cuentas_pagar": ("Cuentas por pagar", "tesoreria", [
-  ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),
+  ("beneficiario","Beneficiario","text",True),("concepto","Concepto","text",True),("importe","Importe adeudado","number",True),("es_gasto","¿Clasificar también como gasto?","checkbox",False),
   ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
@@ -1140,6 +1140,11 @@ def module_page(module):
         items=Record.query.filter_by(module="gastos").order_by(Record.created_at.desc()).all()
         tickets_gasto=[r for r in Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all() if json.loads(r.data or "{}").get("destino_pago")=="gastos"]
         caja_chica_gastos=[r for r in Record.query.filter_by(module="caja_chica").order_by(Record.created_at.desc()).all() if json.loads(r.data or "{}").get("tipo")=="gasto" and json.loads(r.data or "{}").get("clasificacion")=="gastos"]
+        cuentas_pagar_gasto=[]
+        for obligation in Record.query.filter_by(module="cuentas_pagar").order_by(Record.created_at.desc()).all():
+            try: obligation_data=json.loads(obligation.data or "{}")
+            except (ValueError,TypeError): obligation_data={}
+            if obligation_data.get("es_gasto")=="Sí": cuentas_pagar_gasto.append((obligation,obligation_data))
         total_gastos=sum((Decimal(str(r.amount or 0)) for r in items+tickets_gasto+caja_chica_gastos),Decimal("0"))
         q=request.args.get("q","").strip().casefold()
         items=[r for r in items if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
@@ -1159,6 +1164,7 @@ def module_page(module):
         <div style="align-self:end"><button>Guardar gasto</button></div></form>
         <script>function addGastoItem(){const root=document.getElementById('gasto-items');const row=root.querySelector('.gasto-item').cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');root.appendChild(row)}</script></section>
         <section class="card"><h2>Resumen de gastos · Total: Gs. {{total_gastos}}</h2><p>Incluye los gastos registrados aquí y los tickets clasificados como Gastos. Los tickets clasificados como Pago de materiales y los movimientos de caja chica marcados solo como Caja chica no se suman.</p></section>
+        <section class="card"><h2>Cuentas por pagar clasificadas como gasto</h2><p>Estas obligaciones se muestran por separado para el administrador y no se duplican en el total de gastos pagados.</p><div style="overflow-x:auto"><table><tr><th>Fecha</th><th>Beneficiario</th><th>Concepto</th><th>Importe</th><th>Moneda</th><th>Estado</th><th>Ver</th></tr>{% for r,d in cuentas_pagar_gasto %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{d.get('beneficiario','')}}</td><td>{{d.get('concepto','')}}</td><td>{{r.amount}}</td><td>{{d.get('moneda','PYG')}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td></tr>{% else %}<tr><td colspan="7">No hay cuentas por pagar clasificadas como gasto.</td></tr>{% endfor %}</table></div></section>
         <section class="card"><h2>Historial de gastos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar artículo, concepto, comprobante"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
         <table><tr><th>Fecha</th><th>Origen</th><th>Concepto</th><th>Detalle</th><th>Medio</th><th>Total</th><th>Estado</th><th>Ver</th><th>Imprimir</th></tr>
         {% for r in items %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>Gasto</td><td>{{d.get('concepto','Otros gastos')}}</td><td>{% for x in d.get('items',[]) %}{{x.get('articulo')}} · Cantidad: {{x.get('cantidad')}} · Total: Gs. {{x.get('total',x.get('subtotal',''))}}<br>{% endfor %}</td><td>{{d.get('medio')}}</td><td>{{r.amount}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}
@@ -1283,6 +1289,7 @@ def module_page(module):
                     data["tipo_cambio"]=str(rate)
                     data["importe_pyg"]=str((amount*rate).quantize(Decimal("0.01")) if currency=="USD" else amount)
                 status=data.get("estado","Pendiente") if module in ("cuentas_cobrar","cheques") else "Pendiente"
+                if module=="cuentas_pagar": data["es_gasto"]="Sí" if data.get("es_gasto")=="Sí" else "No"
                 rec=Record(module=module,title=(data.get("beneficiario") or data.get("cliente") or data.get("concepto") or data.get("numero") or title)[:220],
                     data=json.dumps(data,ensure_ascii=False),amount=amount,status=status,created_by=current_user().id)
                 db.session.add(rec); db.session.flush(); log_action("crear cuenta / cheque",module,rec.id,rec.title)
@@ -1325,7 +1332,7 @@ def module_page(module):
         <script>function updateReceivableTotal(){const q=Number(document.getElementById('receivable-kg').value)||0,p=Number(document.getElementById('receivable-price').value)||0,c=document.getElementById('receivable-currency').value;const total=q*p;document.getElementById('receivable-total').value=(c==='PYG'?'Gs. ':'$ ')+total.toLocaleString(c==='PYG'?'es-PY':'en-US',{maximumFractionDigits:2,minimumFractionDigits:c==='USD'?2:0});}document.getElementById('receivable-kg').addEventListener('input',updateReceivableTotal);document.getElementById('receivable-price').addEventListener('input',updateReceivableTotal);</script>
         {% else %}
         {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
-        {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Incluye cheque adelantado</label>
+        {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> {{'Clasificar esta obligación también como gasto' if key=='es_gasto' else 'Incluye cheque adelantado'}}</label>
         {% elif key=='moneda' and module in ('cuentas_pagar','cuentas_cobrar') %}<select name="{{key}}" onchange="const r=this.form.querySelector('[name=tipo_cambio]');if(r){r.required=this.value==='USD';if(this.value==='PYG')r.value='1';else if(r.value==='1')r.value='';}"><option value="PYG">PYG · Guaraníes</option><option value="USD">USD · Dólares</option></select>
         {% elif key=='tipo_cambio' and module in ('cuentas_pagar','cuentas_cobrar') %}<input name="{{key}}" type="number" min="0.000001" step="0.000001" value="1" placeholder="Ej.: 7300">
         {% elif key=='estado' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
