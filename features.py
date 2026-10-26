@@ -1289,3 +1289,69 @@ def _professional_reports():
     app.view_functions["report_module"]=report_module_pro
 
 _professional_reports()
+
+
+# Informe de proveedores con entregas históricas y detalle de materiales.
+_supplier_previous_report = app.view_functions["report_module"]
+def _supplier_report_with_history(module):
+    if module != "proveedores":
+        return _supplier_previous_report(module)
+    if not allowed(module):
+        abort(403)
+    q=request.args.get("q","").strip().casefold()
+    since=request.args.get("desde","").strip()
+    until=request.args.get("hasta","").strip()
+    suppliers=[]
+    for sr in _rows("proveedores"):
+        sd=_data(sr)
+        name=str(sd.get("nombre") or "").strip()
+        if name: suppliers.append((sr,sd,name))
+    deliveries=[]
+    seen=set()
+    for source in ("tickets_entrada","tickets"):
+        for rec in _rows(source):
+            d=_data(rec)
+            provider=str(d.get("persona") or d.get("proveedor") or d.get("cliente") or "").strip()
+            number=str(d.get("ticket") or d.get("numero_ticket") or d.get("nro_ticket") or rec.id).strip()
+            key=(number.casefold(),provider.casefold())
+            if key in seen: continue
+            seen.add(key)
+            lines=d.get("materiales") if isinstance(d.get("materiales"),list) else []
+            if not lines and (d.get("material") or d.get("nombre_material")):
+                lines=[{"material":d.get("material") or d.get("nombre_material"),"kg":d.get("kg",d.get("cantidad_kg",d.get("cantidad",0))),"precio_unitario":d.get("precio",d.get("precio_kg","")),"importe":d.get("total",rec.amount)}]
+            clean=[]; kg_total=Decimal("0")
+            for line in lines:
+                if not isinstance(line,dict): continue
+                material=str(line.get("material") or line.get("nombre_material") or "").strip()
+                try: kg=Decimal(str(line.get("kg",line.get("cantidad_kg",line.get("cantidad",0))) or 0).replace(",","."))
+                except Exception: kg=Decimal("0")
+                if not material: continue
+                kg_total+=kg
+                clean.append({"material":material,"kg":kg,"precio":line.get("precio_unitario",line.get("precio","")),"importe":line.get("importe",line.get("total",""))})
+            if not clean: continue
+            date=str(d.get("fecha") or local_time(rec.created_at).strftime("%Y-%m-%d"))[:10]
+            searchable=(provider+" "+number+" "+rec.title+" "+rec.data).casefold()
+            if (since and date<since) or (until and date>until): continue
+            deliveries.append({"record":rec,"provider":provider,"number":number,"date":date,"lines":clean,"kg":kg_total,"total":rec.amount or d.get("total",d.get("importe",0)),"data":d})
+    by_provider={}
+    for delivery in deliveries: by_provider.setdefault(delivery["provider"].casefold(),[]).append(delivery)
+    rows=[]
+    for sr,sd,name in suppliers:
+        ds=by_provider.get(name.casefold(),[])
+        if not ds: continue
+        if q and q not in (name+" "+str(sd)).casefold() and not any(q in (x["provider"]+" "+x["number"]+" "+str(x["data"])).casefold() for x in ds): continue
+        total_kg=sum((x["kg"] for x in ds),Decimal("0"))
+        total_amount=sum((Decimal(str(x["total"] or 0).replace(",",".")) for x in ds),Decimal("0"))
+        rows.append({"data":sd,"name":name,"deliveries":sorted(ds,key=lambda x:(x["date"],x["record"].created_at),reverse=True),"count":len(ds),"kg":total_kg,"amount":total_amount,"latest":max(x["date"] for x in ds)})
+    rows.sort(key=lambda x:x["name"].casefold())
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Informe completo de proveedores</h2>
+    <p>Proveedores con entregas registradas, datos guardados, resumen y detalle histórico de materiales. Informe de consulta: no modifica los registros originales.</p>
+    <form method="get" class="grid"><div><label>Buscar proveedor, documento, ticket o material</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div style="align-self:end"><button>Consultar</button> <a class="btn" href="{{url_for('report_module',module='proveedores')}}">Limpiar</a></div></form>
+    <p><button type="button" onclick="window.print()">Imprimir informe</button></p><div style="overflow-x:auto"><table>
+    <tr><th>Código</th><th>Datos del proveedor</th><th>Entregas</th><th>Kg acumulados</th><th>Importe registrado</th><th>Última entrega</th></tr>
+    {% for item in rows %}<tr><td>{{item.data.get('codigo','—')}}</td><td><b>{{item.name}}</b>{% for k,v in item.data.items() %}{% if k not in ('nombre','codigo') and v not in (None,'') %}<div><b>{{k|replace('_',' ')|title}}:</b> {{v}}</div>{% endif %}{% endfor %}</td><td>{{item.count}}</td><td>{{item.kg}}</td><td>Gs. {{item.amount}}</td><td>{{item.latest}}</td></tr>
+    <tr><td colspan="6"><details><summary>Ver entregas y materiales de {{item.name}}</summary>{% for d in item.deliveries %}<div style="padding:10px;margin:8px 0;border:1px solid #e1e8f0;border-radius:8px"><b>Fecha:</b> {{d.date}} · <b>Ticket:</b> {{d.number}} · <b>Importe:</b> Gs. {{d.total}}<table><tr><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Importe</th></tr>{% for line in d.lines %}<tr><td>{{line.material}}</td><td>{{line.kg}}</td><td>{{line.precio}}</td><td>{{line.importe}}</td></tr>{% endfor %}</table><a class="btn" href="{{url_for('view_record',rid=d.record.id)}}">Ver registro</a> <a class="btn" href="{{url_for('print_record',rid=d.record.id)}}">Imprimir ticket</a></div>{% endfor %}</details></td></tr>
+    {% else %}<tr><td colspan="6">No hay proveedores con entregas para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A. · Informe de proveedores</footer></body></html>
+    """,title="Informe completo de proveedores",rows=rows,q=q,since=since,until=until)
+app.view_functions["report_module"]=_supplier_report_with_history
