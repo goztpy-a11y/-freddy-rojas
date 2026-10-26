@@ -232,7 +232,7 @@ def proveedores():
     <div><label>RUC / cédula (opcional)</label><input name="cedula"></div>
     <div><label>Teléfono</label><input name="telefono"></div>
     <div><label>Dirección</label><input name="direccion"></div>
-    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1"> Incluir los tickets de este proveedor en Pagos (se puede pagar en fechas diferentes)</label></div>
+    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1"> Permitir enviar tickets de este proveedor a Pagos (pagos en fechas diferentes)</label></div>
     <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><p>Ingresá el precio que este proveedor paga por cada material. Cada proveedor conserva sus propios precios; podés dejar vacío el material que no ofrece.</p>
     <div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
     {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" placeholder="Ingresar precio" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales. Registrá primero los materiales.</td></tr>{% endfor %}
@@ -354,7 +354,7 @@ def editar_proveedor(rid):
     return _page("Editar proveedor", """
     <section class="card"><h2>Editar proveedor {{d.get('codigo')}}</h2><form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" value="{{d.get('nombre','')}}" required></div><div><label>Cédula (opcional)</label><input name="cedula" value="{{d.get('cedula','')}}"></div><div><label>Teléfono</label><input name="telefono" value="{{d.get('telefono','')}}"></div><div><label>Dirección</label><input name="direccion" value="{{d.get('direccion','')}}"></div>
-    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1" {% if d.get('en_pagos',False) %}checked{% endif %}> Incluir los tickets de este proveedor en Pagos (se puede pagar en fechas diferentes)</label></div>
+    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1" {% if d.get('en_pagos',False) %}checked{% endif %}> Permitir enviar tickets de este proveedor a Pagos (pagos en fechas diferentes)</label></div>
     <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
     {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" value="{{d.get('precios_materiales',{}).get(m.id|string,'')}}" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales registrados.</td></tr>{% endfor %}
     </table></div></div>
