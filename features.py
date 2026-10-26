@@ -309,14 +309,33 @@ def listado_proveedores():
     items=[(r,_data(r)) for r in _rows("proveedores")]
     from app import Material
     mats=Material.query.order_by(Material.name).all()
+    ticket_rows=_rows("tickets")
+    payment_rows=_rows("pagos_diarios")
+    supplier_totals={}
+    for ticket in ticket_rows:
+        td=_data(ticket)
+        supplier=str(td.get("cliente") or "").strip().casefold()
+        if not supplier: continue
+        entry=supplier_totals.setdefault(supplier,{"kg":Decimal("0"),"monto":Decimal("0"),"pagado":Decimal("0")})
+        entry["monto"]+=Decimal(str(td.get("total",ticket.amount) or 0))
+        for line in (td.get("materiales",[]) or []):
+            try: entry["kg"]+=Decimal(str(line.get("cantidad",line.get("kg",0)) or 0).replace(",","."))
+            except (InvalidOperation,ValueError,AttributeError): pass
+        number=str(td.get("numero_ticket",td.get("nro_ticket",""))).strip().casefold()
+        if number:
+            entry["pagado"]+=sum((Decimal(str(p.amount or 0)) for p in payment_rows if str(_data(p).get("ticket","")).strip().casefold()==number),Decimal("0"))
+    for _,vd in items:
+        entry=supplier_totals.get(str(vd.get("nombre","")).strip().casefold(),{"kg":Decimal("0"),"monto":Decimal("0"),"pagado":Decimal("0")})
+        vd["_kg_total"]=entry["kg"].quantize(Decimal("0.001"))
+        vd["_monto_deuda"]=max(Decimal("0"),entry["monto"]-entry["pagado"]).quantize(Decimal("0.01"))
     last={d.get("nombre"):max([local_time(x.created_at).strftime("%d/%m/%Y %H:%M") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
     return _page("Proveedores", """
     <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
-    <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
+    <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Kg registrados</th><th>Monto adeudado (Gs.)</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
     {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td>
     <td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}{% if not d.get('precios_materiales') %}—{% endif %}</td>
     <td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td>
-    <td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="9">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
+    <td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="11">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
     """,items=items,mats=mats,last=last)
 
 
