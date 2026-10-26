@@ -143,7 +143,7 @@ class SmokeTests(unittest.TestCase):
             "fecha": "2026-10-22", "categoria": "Herramientas", "concepto": "Otros gastos",
             "detalle_concepto": "Prueba", "medio": "Efectivo",
             "comprobante": "G-001", "item[]": ["Guantes", "Llave"],
-            "cantidad_item[]": ["2", "1"], "precio_item[]": ["15000", "25000"]
+            "cantidad_item[]": ["2", "1"], "total_item[]": ["30000", "25000"]
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
