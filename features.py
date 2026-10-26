@@ -1231,6 +1231,8 @@ def _professional_reports():
     original_reports=app.view_functions.get("reports")
     original_module_report=app.view_functions.get("report_module")
     def reports_pro():
+        if not current_user():
+            return redirect(url_for("login", next=request.full_path))
         special_labels={
             "combustible_stock":"Stock de combustible","combustible_camion":"Combustible por camión",
             "ventas_combustible":"Ventas de combustible","gomeria_servicios":"Servicios de gomería",
@@ -1303,6 +1305,8 @@ def _professional_reports():
         </section></main><footer>El Toro S.A. · Informes de gestión</footer></body></html>
         """,title="Informes",available=available,q=q,sector=sector,since=since,until=until,results=results,searched=searched,module_keys=MODULES.keys())
     def report_module_pro(module):
+        if not current_user():
+            return redirect(url_for("login", next=request.full_path))
         if module=="cobros_cuentas": return redirect(url_for("report_module",module="cuentas_cobrar"))
         if module not in MODULES: abort(404)
         if not allowed(module): abort(403)
@@ -1411,6 +1415,8 @@ _professional_reports()
 # Informe de proveedores con entregas históricas y detalle de materiales.
 _supplier_previous_report = app.view_functions["report_module"]
 def _supplier_report_with_history(module):
+    if not current_user():
+        return redirect(url_for("login", next=request.full_path))
     if module != "proveedores":
         return _supplier_previous_report(module)
     if not allowed(module):
