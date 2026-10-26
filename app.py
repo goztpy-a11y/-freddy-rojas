@@ -76,10 +76,12 @@ MODULES = {
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
-  ("cliente","Cliente / quien debe","text",True),("concepto","Concepto","text",True),("importe","Importe por cobrar","number",True),
+  ("cliente","Cliente","text",True),("numero_ticket","Número de ticket","text",True),
+  ("material","Material descargado","text",True),("cantidad_kg","Kilogramos","number",True),
+  ("precio_kg","Precio por kilogramo","number",True),
   ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
-  ("vencimiento","Vencimiento","date",False),("estado","Estado / seguimiento","select",False)]),
+  ("vencimiento","Fecha estimada de cobro (opcional)","date",False)]),
  "cheques": ("Cheques adelantados", "tesoreria", [
   ("beneficiario","Beneficiario","text",True),("numero","Número de cheque","text",True),("importe","Importe","number",True),
   ("fecha","Fecha del cheque","date",True),("vencimiento","Fecha de vencimiento","date",True),("estado","Estado","select",True)]),
@@ -1248,13 +1250,26 @@ def module_page(module):
             data={key:("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip()
                   for key,label,kind,req in fields}
             if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("moneda"): data["moneda"]="PYG"
-            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("tipo_cambio"): data["tipo_cambio"]="1"
+            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("tipo_cambio") and str(data.get("moneda","PYG")).upper()=="PYG": data["tipo_cambio"]="1"
             if module=="cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
             if module=="cheques" and not data.get("estado"): data["estado"]="Pendiente"
             for key,label,kind,req in fields:
                 if req and not data.get(key): flash("Falta completar: "+label); return redirect(url_for("module_page",module=module))
             try:
-                amount=Decimal(data.get("importe","0").replace(",","."))
+                if module=="cuentas_cobrar":
+                    qty=Decimal(data.get("cantidad_kg","").replace(",","."))
+                    price=Decimal(data.get("precio_kg","").replace(",","."))
+                    ticket_no=data.get("numero_ticket","").strip()
+                    if qty<=0 or price<=0 or not ticket_no: raise InvalidOperation()
+                    for existing in originals:
+                        existing_data=json.loads(existing.data or "{}")
+                        if str(existing_data.get("numero_ticket","")).strip().casefold()==ticket_no.casefold():
+                            db.session.rollback(); flash("Ese número de ticket ya está registrado en Cuentas por cobrar."); return redirect(url_for("module_page",module=module))
+                    amount=(qty*price).quantize(Decimal("0.01"))
+                    data["importe"]=str(amount)
+                    data["concepto"]="Ticket "+ticket_no+" · "+data.get("material","").strip()
+                else:
+                    amount=Decimal(data.get("importe","0").replace(",","."))
                 if amount<=0: raise InvalidOperation()
                 if module in ("cuentas_pagar","cuentas_cobrar"):
                     currency=str(data.get("moneda","PYG") or "PYG").upper()
@@ -1294,16 +1309,30 @@ def module_page(module):
                       if p.module==payment_module and json.loads(p.data or "{}").get("modulo_origen")==module and str(json.loads(p.data or "{}").get("registro_id"))==str(rec.id)),Decimal("0"))
             summaries.append((rec,d,paid,max(Decimal("0"),rec.amount-paid)))
         return render_template_string(BASE+"""
-        <section class="card"><h2>{{title}}</h2><form method="post" class="grid">
+        <section class="card"><h2>{{title}}</h2><form method="post" class="grid" id="account-record-form">
+        {% if module=='cuentas_cobrar' %}
+        <div><label>Cliente</label><input name="cliente" required placeholder="Nombre del cliente"></div>
+        <div><label>Número de ticket</label><input name="numero_ticket" required placeholder="Número enviado por el chofer"></div>
+        <div><label>Material descargado</label><input name="material" required placeholder="Material"></div>
+        <div><label>Kilogramos</label><input name="cantidad_kg" id="receivable-kg" type="number" min="0.001" step="0.001" required></div>
+        <div><label>Precio por kilogramo</label><input name="precio_kg" id="receivable-price" type="number" min="0.000001" step="0.000001" required></div>
+        <div><label>Moneda</label><select name="moneda" id="receivable-currency" onchange="updateReceivableTotal();const r=this.form.querySelector('[name=tipo_cambio]');if(r){r.required=this.value==='USD';if(this.value==='PYG')r.value='1';else if(r.value==='1')r.value='';}"><option value="PYG">PYG · Guaraníes</option><option value="USD">USD · Dólares</option></select></div>
+        <div><label>Tipo de cambio USD → PYG</label><input name="tipo_cambio" type="number" min="0.000001" step="0.000001" value="1" placeholder="Ej.: 7300"></div>
+        <div><label>N.º de factura (opcional)</label><input name="factura"></div>
+        <div><label>Fecha de factura (opcional)</label><input name="fecha_factura" type="date"></div>
+        <div><label>Fecha estimada de cobro (opcional)</label><input name="vencimiento" type="date"></div>
+        <div style="grid-column:1/-1;background:#f5f8fc;padding:14px;border-radius:10px"><label>Monto total por cobrar</label><input id="receivable-total" readonly value="0"><small>El sistema calcula kilogramos × precio por kilogramo. El ticket queda pendiente hasta registrar el dinero recibido.</small></div>
+        <script>function updateReceivableTotal(){const q=Number(document.getElementById('receivable-kg').value)||0,p=Number(document.getElementById('receivable-price').value)||0,c=document.getElementById('receivable-currency').value;const total=q*p;document.getElementById('receivable-total').value=(c==='PYG'?'Gs. ':'$ ')+total.toLocaleString(c==='PYG'?'es-PY':'en-US',{maximumFractionDigits:2,minimumFractionDigits:c==='USD'?2:0});}document.getElementById('receivable-kg').addEventListener('input',updateReceivableTotal);document.getElementById('receivable-price').addEventListener('input',updateReceivableTotal);</script>
+        {% else %}
         {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
         {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> Incluye cheque adelantado</label>
         {% elif key=='moneda' and module in ('cuentas_pagar','cuentas_cobrar') %}<select name="{{key}}" onchange="const r=this.form.querySelector('[name=tipo_cambio]');if(r){r.required=this.value==='USD';if(this.value==='PYG')r.value='1';else if(r.value==='1')r.value='';}"><option value="PYG">PYG · Guaraníes</option><option value="USD">USD · Dólares</option></select>
         {% elif key=='tipo_cambio' and module in ('cuentas_pagar','cuentas_cobrar') %}<input name="{{key}}" type="number" min="0.000001" step="0.000001" value="1" placeholder="Ej.: 7300">
-        {% elif key=='estado' and module=='cuentas_cobrar' %}<select name="{{key}}"><option>Pendiente</option><option>En proceso</option><option>Pagado</option><option>Vencido</option></select>
         {% elif key=='estado' and module=='cheques' %}<select name="{{key}}"><option>Pendiente</option><option>Desembolsado</option></select>
         {% else %}<input name="{{key}}" type="{{kind}}" {% if req %}required{% endif %} {% if kind=='number' %}step="0.01" min="0"{% endif %}>{% endif %}</div>{% endfor %}
+        {% endif %}
         <div style="align-self:end"><button>Guardar registro</button></div></form></section>
-        <section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
+<section class="card"><h2>Historial y saldos</h2><button type="button" onclick="window.print()">Imprimir historial</button>
         <table><tr><th>Fecha</th><th>Registro</th><th>Moneda</th><th>Importe original</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr>
         {% for r,d,paid,balance in summaries %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}<br>{% for k,v in d.items() %}{% if v is string %}{{k}}: {{v}}<br>{% endif %}{% endfor %}</td><td>{{d.get('moneda','PYG')}}</td><td>{{r.amount}} {{d.get('moneda','PYG')}}</td><td>{{paid}} {{d.get('moneda','PYG')}}</td><td><b>{{balance}} {{d.get('moneda','PYG')}}</b></td><td>{{r.status}}</td><td>{% if balance>0 and module!='cheques' %}<form method="post"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{r.id}}"><label>Importe ({{d.get('moneda','PYG')}})</label><input name="importe" type="number" min="0.01" max="{{balance}}" step="0.01" required placeholder="Importe"><label>Cuenta bancaria</label><select name="company_account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · PYG {{a.balance}} · USD {{a.balance_usd}}</option>{% endfor %}</select><input name="fecha" type="date" value="{{today}}" required><label>Tipo de cambio USD → PYG</label><input name="tipo_cambio" type="number" min="0.000001" step="0.000001" value="{{d.get('tipo_cambio','1')}}" {% if d.get('moneda','PYG')=='USD' %}required{% endif %}><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select><input name="detalle" placeholder="Detalle"><button>Registrar pago/cobro</button></form>{% elif module=='cheques' and r.status!='Desembolsado' %}<form method="post"><input type="hidden" name="accion" value="desembolsar"><input type="hidden" name="registro_id" value="{{r.id}}"><button>Marcar desembolsado</button></form>{% endif %}</td></tr>{% endfor %}</table></section>
         <section class="card"><h2>Movimientos de pago y cobro</h2><div style="overflow-x:auto"><table><tr><th>Fecha</th><th>Registro</th><th>Beneficiario / cliente</th><th>Concepto</th><th>Importe</th><th>Moneda</th><th>Equivalente PYG</th><th>Cuenta bancaria</th><th>Medio</th><th>Imprimir</th></tr>
