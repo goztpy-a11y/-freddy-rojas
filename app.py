@@ -989,14 +989,13 @@ def module_page(module):
         function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
         function selectedVendor(){const s=norm(clientField.value);return ticketVendors.find(v=>norm(v.nombre)===s||norm(v.codigo)===s);}
         const includePayments=document.getElementById("ticket-en-pagos");
-        function syncPaymentFlag(){const v=selectedVendor();includePayments.checked=!!(v&&v.en_pagos);}
-        includePayments.checked=false;
+        // La decisión de incluir este ticket es individual; no se cambia al elegir proveedor.
         function showVendorMatches(){
           const q=norm(clientField.value);suggestions.replaceChildren();
           if(!q){suggestions.style.display='none';return;}
           const matches=ticketVendors.filter(v=>norm(v.nombre).includes(q)||norm(v.codigo).includes(q)).slice(0,12);
           if(!matches.length){suggestions.style.display='none';return;}
-          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);syncPaymentFlag();clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
+          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
           suggestions.style.display='block';
         }
         function updatePrices(force=false, changedRow=null){
@@ -1026,7 +1025,7 @@ def module_page(module):
           row.querySelector('[name="material"]').required=false;row.querySelector('[name="cantidad"]').required=false;root.appendChild(row);updateGrandTotal();
         }
         clientField.addEventListener('input',showVendorMatches);
-        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);syncPaymentFlag();});
+        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);});
         // No cerrar en blur: en móviles el toque puede quitar el foco antes del click de la sugerencia.
         // El menú se cierra al seleccionar un proveedor o al tocar fuera del listado.
         document.addEventListener('click',e=>{if(!suggestions.contains(e.target)&&e.target!==clientField)suggestions.style.display='none';});
