@@ -103,6 +103,20 @@ class SmokeTests(unittest.TestCase):
         with app.app_context():
             self.assertEqual(CompanyAccount.query.count(), 2)
 
+    def test_caja_can_open_receivables_and_payables(self):
+        with app.app_context():
+            caja_user = User(username="caja_test", password_hash=generate_password_hash("test-password"),
+                             role="caja", areas="caja")
+            db.session.add(caja_user)
+            db.session.commit()
+            caja_id = caja_user.id
+        with self.client.session_transaction() as sess:
+            sess["uid"] = caja_id
+        for path in ("/modulo/cuentas_cobrar", "/modulo/cuentas_pagar"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+
     def test_usd_receivable_collection_credits_selected_account(self):
         from app import Record
         self.client.post("/modulo/cuentas_empresa", data={
