@@ -14,8 +14,11 @@ def materials_report():
     entries=[]
     exits=[]
     totals={}
+    ticket_inventory_ids=set()
     for rec in _rows("inventario"):
         d=_data(rec)
+        if d.get("registro_ticket_id") not in (None,""):
+            ticket_inventory_ids.add(str(d.get("registro_ticket_id")))
         name=str(d.get("material") or d.get("nombre_material") or rec.title).strip()
         try: qty=Decimal(str(d.get("cantidad_ingresada",d.get("cantidad",0)) or 0))
         except InvalidOperation: qty=Decimal("0")
@@ -26,6 +29,27 @@ def materials_report():
         key=str(mat.id) if mat else name.casefold()
         totals.setdefault(key,{"name":name,"entrada":Decimal("0"),"salida":Decimal("0")})
         totals[key]["entrada"]+=qty
+    # Respaldo para tickets de entrada históricos que no tengan movimiento de inventario asociado.
+    # Los tickets que ya generaron sus movimientos no se duplican en este informe.
+    for ticket_rec in _rows("tickets_entrada"):
+        if str(ticket_rec.id) in ticket_inventory_ids:
+            continue
+        td=_data(ticket_rec)
+        ticket_number=str(td.get("ticket") or ("CARGA-"+str(ticket_rec.id)))
+        provider=str(td.get("persona") or td.get("proveedor") or "")
+        date=str(td.get("fecha") or ticket_rec.created_at.strftime("%Y-%m-%d"))[:10]
+        for line in td.get("materiales",[]) or []:
+            name=str(line.get("material") or line.get("nombre_material") or "").strip()
+            try: qty=Decimal(str(line.get("kg",line.get("cantidad",0)) or 0))
+            except (InvalidOperation,ValueError,TypeError): qty=Decimal("0")
+            if not name or qty<=0:
+                continue
+            fallback_row={"fecha":date,"tipo":"Entrada","material":name,"cantidad":qty,"ref":ticket_number,"persona":provider,"record":ticket_rec}
+            entries.append(fallback_row)
+            mat=next((item for item in materials if item.name.casefold()==name.casefold()),None)
+            key=str(mat.id) if mat else name.casefold()
+            totals.setdefault(key,{"name":name,"entrada":Decimal("0"),"salida":Decimal("0")})
+            totals[key]["entrada"]+=qty
     for rec in _rows("ventas"):
         d=_data(rec)
         name=str(d.get("material") or d.get("nombre_material") or "").strip()
