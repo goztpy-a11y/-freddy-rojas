@@ -1331,7 +1331,7 @@ def _supplier_report_with_history(module):
             if not clean: continue
             date=str(d.get("fecha") or local_time(rec.created_at).strftime("%Y-%m-%d"))[:10]
             searchable=(provider+" "+number+" "+rec.title+" "+rec.data).casefold()
-            if since and date<since or until and date>until or q and q not in searchable: continue
+            if (since and date<since) or (until and date>until): continue
             deliveries.append({"record":rec,"provider":provider,"number":number,"date":date,"lines":clean,"kg":kg_total,"total":rec.amount or d.get("total",d.get("importe",0)),"data":d})
     by_provider={}
     for delivery in deliveries: by_provider.setdefault(delivery["provider"].casefold(),[]).append(delivery)
@@ -1350,7 +1350,7 @@ def _supplier_report_with_history(module):
     <form method="get" class="grid"><div><label>Buscar proveedor, documento, ticket o material</label><input name="q" value="{{q}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div style="align-self:end"><button>Consultar</button> <a class="btn" href="{{url_for('report_module',module='proveedores')}}">Limpiar</a></div></form>
     <p><button type="button" onclick="window.print()">Imprimir informe</button></p><div style="overflow-x:auto"><table>
     <tr><th>Código</th><th>Datos del proveedor</th><th>Entregas</th><th>Kg acumulados</th><th>Importe registrado</th><th>Última entrega</th></tr>
-    {% for item in rows %}<tr><td>{{item.data.get('codigo','—')}}</td><td><b>{{item.name}}</b>{% for k,v in item.data.items() %}{% if k not in ('nombre','codigo','precios_materiales') and v not in (None,'') %}<div><b>{{k|replace('_',' ')|title}}:</b> {{v}}</div>{% endif %}{% endfor %}</td><td>{{item.count}}</td><td>{{item.kg}}</td><td>Gs. {{item.amount}}</td><td>{{item.latest}}</td></tr>
+    {% for item in rows %}<tr><td>{{item.data.get('codigo','—')}}</td><td><b>{{item.name}}</b>{% for k,v in item.data.items() %}{% if k not in ('nombre','codigo') and v not in (None,'') %}<div><b>{{k|replace('_',' ')|title}}:</b> {{v}}</div>{% endif %}{% endfor %}</td><td>{{item.count}}</td><td>{{item.kg}}</td><td>Gs. {{item.amount}}</td><td>{{item.latest}}</td></tr>
     <tr><td colspan="6"><details><summary>Ver entregas y materiales de {{item.name}}</summary>{% for d in item.deliveries %}<div style="padding:10px;margin:8px 0;border:1px solid #e1e8f0;border-radius:8px"><b>Fecha:</b> {{d.date}} · <b>Ticket:</b> {{d.number}} · <b>Importe:</b> Gs. {{d.total}}<table><tr><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Importe</th></tr>{% for line in d.lines %}<tr><td>{{line.material}}</td><td>{{line.kg}}</td><td>{{line.precio}}</td><td>{{line.importe}}</td></tr>{% endfor %}</table><a class="btn" href="{{url_for('view_record',rid=d.record.id)}}">Ver registro</a> <a class="btn" href="{{url_for('print_record',rid=d.record.id)}}">Imprimir ticket</a></div>{% endfor %}</details></td></tr>
     {% else %}<tr><td colspan="6">No hay proveedores con entregas para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A. · Informe de proveedores</footer></body></html>
     """,title="Informe completo de proveedores",rows=rows,q=q,since=since,until=until)
