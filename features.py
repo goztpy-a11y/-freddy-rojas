@@ -108,11 +108,11 @@ def crear_pago_diario():
     if source_ticket:
         source_data=_data(source_ticket)
         source_vendor=str(source_data.get("cliente",source_data.get("persona",source_data.get("proveedor","")))).strip().casefold()
-        provider_enabled=any(
-            str(_data(v).get("nombre","")).strip().casefold()==source_vendor
-            and bool(_data(v).get("en_pagos",False))
-            for v in _rows("proveedores")
-        )
+        provider_record=next((v for v in _rows("proveedores")
+            if (source_data.get("proveedor_id") and str(v.id)==str(source_data.get("proveedor_id")))
+            or str(_data(v).get("nombre","")).strip().casefold()==source_vendor),None)
+        administered_ids={str(_data(v).get("proveedor_id","")) for v in _rows("admin_clientes_seleccionados")}
+        provider_enabled=bool(provider_record and str(provider_record.id) in administered_ids)
         # La habilitación del proveedor siempre prevalece; la carga además debe estar visible en Pagos.
         ticket_enabled=bool(source_data.get("en_pagos",provider_enabled))
         allowed_in_payments=provider_enabled and ticket_enabled

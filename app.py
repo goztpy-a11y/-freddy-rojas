@@ -791,15 +791,24 @@ def toggle_ticket_payments(rid):
         data = {}
     include_in_payments = request.form.get("en_pagos") == "1"
     supplier_name = str(data.get("cliente") or data.get("persona") or data.get("proveedor") or "").strip().casefold()
-    supplier_enabled = False
-    for supplier_record in Record.query.filter_by(module="proveedores").all():
+    supplier_record = None
+    for candidate in Record.query.filter_by(module="proveedores").all():
         try:
-            supplier_data = json.loads(supplier_record.data or "{}")
+            candidate_data = json.loads(candidate.data or "{}")
         except (ValueError, TypeError):
-            supplier_data = {}
-        if str(supplier_data.get("nombre", "")).strip().casefold() == supplier_name:
-            supplier_enabled = bool(supplier_data.get("en_pagos", False))
+            candidate_data = {}
+        if str(candidate_data.get("nombre", "")).strip().casefold() == supplier_name:
+            supplier_record = candidate
             break
+    selected_supplier_ids = set()
+    for selected_record in Record.query.filter_by(module="admin_clientes_seleccionados").all():
+        try:
+            selected_data = json.loads(selected_record.data or "{}")
+            selected_supplier_ids.add(str(selected_data.get("proveedor_id", "")))
+        except (ValueError, TypeError):
+            continue
+    # La fuente de autorización es la lista real de Administración de deudas, no un campo distinto del proveedor.
+    supplier_enabled = bool(supplier_record and str(supplier_record.id) in selected_supplier_ids)
     # La autorización de Administración de proveedores es obligatoria para incluir una carga en Pagos.
     if include_in_payments and not supplier_enabled:
         flash("No se puede mostrar esta carga en Pagos: el proveedor no está habilitado en Administración de proveedores.")
@@ -935,11 +944,17 @@ def module_page(module):
     if module == "tickets":
         materials=Material.query.order_by(Material.name).all()
         vendor_rows=Record.query.filter_by(module="proveedores").all()
+        selected_supplier_ids=set()
+        for selected_record in Record.query.filter_by(module="admin_clientes_seleccionados").all():
+            try:
+                selected_supplier_ids.add(str(json.loads(selected_record.data or "{}").get("proveedor_id","")))
+            except (ValueError,TypeError):
+                continue
         vendor_prices=[]
         for vr in vendor_rows:
             try:
                 vd=json.loads(vr.data or "{}")
-                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{}),"en_pagos":bool(vd.get("en_pagos",False))})
+                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{}),"en_pagos":str(vr.id) in selected_supplier_ids})
             except (ValueError,TypeError):
                 continue
         material_prices={m.name:{"id":m.id,"minorista":str(m.price or ""),"mayorista":str(m.wholesale_price or "") if m.wholesale_price is not None else ""} for m in materials}
@@ -984,7 +999,20 @@ def module_page(module):
                     flash("Revisá la cantidad y el precio de cada material."); return redirect(url_for("module_page",module=module))
             if not lines:
                 flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
-            data={"numero_ticket":numero_ticket,"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"en_pagos":request.form.get("en_pagos")=="1","total":str(total)}
+            provider_record=None
+            for vr in vendor_rows:
+                try:
+                    vd=json.loads(vr.data or "{}")
+                except (ValueError,TypeError):
+                    continue
+                if str(vd.get("nombre","")).strip().casefold()==client.strip().casefold() or str(vd.get("codigo","")).strip().casefold()==client.strip().casefold():
+                    provider_record=vr
+                    break
+            requested_for_payments=request.form.get("en_pagos")=="1"
+            provider_is_administered=bool(provider_record and str(provider_record.id) in selected_supplier_ids)
+            data={"numero_ticket":numero_ticket,"cliente":client,"proveedor_id":provider_record.id if provider_record else None,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"en_pagos":bool(requested_for_payments and provider_is_administered),"total":str(total)}
+            if requested_for_payments and not provider_is_administered:
+                flash("La carga se guardará en el historial, pero no se mostrará en Pagos porque el proveedor no está seleccionado en Administración de deudas.")
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush()
             # Cada carga registrada en Caja aumenta automáticamente el inventario por material.
@@ -1008,6 +1036,12 @@ def module_page(module):
             flash("Carga guardada y stock de materiales actualizado automáticamente.")
             return redirect(url_for("module_page",module=module))
         q=request.args.get("q","").strip().casefold(); hist=Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all()
+        selected_supplier_ids=set()
+        for selected_record in Record.query.filter_by(module="admin_clientes_seleccionados").all():
+            try:
+                selected_supplier_ids.add(str(json.loads(selected_record.data or "{}").get("proveedor_id","")))
+            except (ValueError,TypeError):
+                continue
         supplier_payment_permissions={}
         for supplier_record in Record.query.filter_by(module="proveedores").all():
             try:
@@ -1016,7 +1050,7 @@ def module_page(module):
                 supplier_data={}
             supplier_name=str(supplier_data.get("nombre","")).strip().casefold()
             if supplier_name:
-                supplier_payment_permissions[supplier_name]=bool(supplier_data.get("en_pagos",False))
+                supplier_payment_permissions[supplier_name]=str(supplier_record.id) in selected_supplier_ids
         parsed=[]
         for record in hist:
             try:
