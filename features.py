@@ -103,6 +103,17 @@ def crear_pago_diario():
     if any(_data(r).get("comprobante","").casefold()==comp.casefold() for r in _rows("pagos_diarios")):
         flash("Comprobante repetido: no se guardó el pago. Usá un número de comprobante distinto.")
         return redirect(url_for("pagos_diarios"))
+    source_ticket=next((r for r in _rows("tickets") if str(_data(r).get("numero_ticket",_data(r).get("nro_ticket",""))).strip().casefold()==ticket.casefold()),None)
+    if source_ticket:
+        source_data=_data(source_ticket)
+        if "en_pagos" in source_data:
+            allowed_in_payments=bool(source_data.get("en_pagos"))
+        else:
+            source_vendor=str(source_data.get("cliente","")).strip().casefold()
+            allowed_in_payments=any(str(_data(v).get("nombre","")).strip().casefold()==source_vendor and bool(_data(v).get("en_pagos",False)) for v in _rows("proveedores"))
+        if not allowed_in_payments:
+            flash("Este ticket está guardado en el historial, pero fue marcado como NO incluir en Pagos. No se registró ningún pago.")
+            return redirect(url_for("pagos_diarios"))
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
     if previous:
@@ -332,7 +343,7 @@ def listado_proveedores():
     return _page("Proveedores", """
     <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
     <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Kg registrados</th><th>Monto adeudado (Gs.)</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
-    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td>
+    {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td><b>{{d.get('_kg_total',0)}}</b> kg</td><td><b>Gs. {{d.get('_monto_deuda',0)}}</b></td>
     <td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}{% if not d.get('precios_materiales') %}—{% endif %}</td>
     <td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td>
     <td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="11">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
