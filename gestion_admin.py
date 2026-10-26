@@ -158,6 +158,46 @@ def admin_clientes():
     already = {str(_d(r).get("proveedor_id")) for r in _rs("admin_clientes_seleccionados")}
     selectable = [(r, d) for r, d in suppliers if str(r.id) not in already]
     selected = [(r, _d(r)) for r in _rs("admin_clientes_seleccionados")]
+    # Sincronizar una sola vez cada ticket oculto en la deuda del proveedor.
+    # Se guarda el ID procesado en el registro de administración para no duplicarlo
+    # al volver a abrir la pantalla. Los pagos previos vinculados al ticket se restan.
+    tickets_hidden = _rs("tickets")
+    ticket_payments = _rs("pagos_diarios")
+    changed_debts = False
+    for selected_record, supplier_data in selected:
+        supplier_name = str(supplier_data.get("nombre", "")).strip().casefold()
+        included_ids = {str(v) for v in supplier_data.get("tickets_deuda_incluidos", [])}
+        for ticket_record in tickets_hidden:
+            ticket_data = _d(ticket_record)
+            ticket_supplier = str(ticket_data.get("cliente") or ticket_data.get("persona") or ticket_data.get("proveedor") or "").strip().casefold()
+            if not supplier_name or ticket_supplier != supplier_name:
+                continue
+            # Solo incorporar tickets que no están visibles en Pagos; los visibles
+            # mantienen su gestión de saldo en el módulo de Pagos.
+            if bool(ticket_data.get("en_pagos", False)) or str(ticket_record.id) in included_ids:
+                continue
+            try:
+                ticket_total = Decimal(str(ticket_record.amount or ticket_data.get("total", ticket_data.get("importe", 0)) or 0))
+                ticket_number = str(ticket_data.get("numero_ticket") or ticket_data.get("nro_ticket") or ticket_data.get("ticket") or "").strip().casefold()
+                paid_for_ticket = sum((Decimal(str(p.amount or 0)) for p in ticket_payments
+                    if ticket_number and str(_d(p).get("ticket", "")).strip().casefold() == ticket_number), Decimal("0"))
+                outstanding = max(Decimal("0"), ticket_total - paid_for_ticket).quantize(Decimal("0.01"))
+                current_debt = Decimal(str(supplier_data.get("deuda_actual", "0") or 0))
+                supplier_data["deuda_actual"] = str((current_debt + outstanding).quantize(Decimal("0.01")))
+                included_ids.add(str(ticket_record.id))
+                changed_debts = True
+                log_action("sumar ticket oculto a deuda de proveedor", "admin_clientes_seleccionados", selected_record.id,
+                           supplier_data.get("nombre", "") + "; ticket " + str(ticket_data.get("numero_ticket") or ticket_record.id) +
+                           "; saldo sumado Gs. " + str(outstanding))
+            except (InvalidOperation, ValueError, TypeError):
+                continue
+        supplier_data["tickets_deuda_incluidos"] = sorted(included_ids, key=lambda value: int(value) if value.isdigit() else value)
+        if changed_debts:
+            selected_record.data = json.dumps(supplier_data, ensure_ascii=False)
+            selected_record.updated_at = paraguay_now()
+    if changed_debts:
+        db.session.commit()
+        selected = [(r, _d(r)) for r in _rs("admin_clientes_seleccionados")]
     accounts = CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).all()
     payments = _rs("pagos_cliente_admin")
     payments_by_id = {}
@@ -169,12 +209,20 @@ def admin_clientes():
         for r in _rs(module):
             x = _d(r)
             name = str(x.get("cliente") or x.get("persona") or x.get("proveedor") or x.get("nombre") or x.get("camion") or "").strip().casefold()
-            kg = x.get("cantidad", x.get("kg", 0))
-            if name:
-                try:
-                    kg_by_name[name] = kg_by_name.get(name, Decimal("0")) + Decimal(str(kg or 0))
-                except (InvalidOperation, ValueError, TypeError):
-                    pass
+            if not name:
+                continue
+            try:
+                # Los tickets guardan los kg dentro de "materiales", no en la raíz.
+                # Sumar todas las líneas independientemente de su visibilidad en Pagos.
+                lines = x.get("materiales") if isinstance(x.get("materiales"), list) else []
+                if lines:
+                    kg = sum((Decimal(str(line.get("cantidad", line.get("kg", line.get("cantidad_kg", 0))) or 0).replace(",", "."))
+                              for line in lines if isinstance(line, dict)), Decimal("0"))
+                else:
+                    kg = Decimal(str(x.get("cantidad", x.get("kg", x.get("cantidad_kg", x.get("cantidad_ingresada", 0)))) or 0).replace(",", "."))
+                kg_by_name[name] = kg_by_name.get(name, Decimal("0")) + kg
+            except (InvalidOperation, ValueError, TypeError, AttributeError):
+                pass
     return _page("Administrar proveedores", """
     <section class="card"><button type="button" id="toggle-proveedores-registrados" aria-expanded="false" aria-controls="lista-proveedores-registrados" onclick="(function(b){var p=document.getElementById('lista-proveedores-registrados');var show=p.style.display==='none';p.style.display=show?'block':'none';b.setAttribute('aria-expanded',show?'true':'false');b.textContent=show?'Cerrar lista de proveedores':'＋ Agregar proveedor';})(this)">＋ Agregar proveedor</button>
       <div id="lista-proveedores-registrados" style="display:none;margin-top:16px">
