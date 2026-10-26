@@ -653,7 +653,8 @@ def cargar_combustible():
     _can_area("estacion")
     try:
         litros=Decimal(request.form.get("litros","").replace(",",".")); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")+_rows("combustible")
-        stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))
+        sales=_rows("ventas_combustible")
+        stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in sales),Decimal("0"))
         chofer=request.form.get("chofer","").strip()
         camion=request.form.get("camion","").strip()
         if litros<=0 or litros>stock or not chofer or not camion: raise InvalidOperation()
