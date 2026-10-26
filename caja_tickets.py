@@ -24,7 +24,7 @@ def registrar_ticket():
                 if p in (None,""):
                     p=m.wholesale_price if m.wholesale_price is not None else m.price
                 prices[str(m.id)]=str(p or 0)
-            vendors.append({"nombre":d["nombre"],"codigo":d.get("codigo",""),"precios":prices})
+            vendors.append({"nombre":d["nombre"],"codigo":d.get("codigo",""),"precios":prices,"en_pagos":bool(d.get("en_pagos",False)),"proveedor_id":r.id})
     today=datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m-%d")
     if request.method=="POST":
         ticket=request.form.get("ticket","").strip()
@@ -55,7 +55,7 @@ def registrar_ticket():
                 total+=subtotal
             total=total.quantize(Decimal("0.01"))
             if not lines or total<=0: raise InvalidOperation()
-            data={"ticket":ticket,"persona":persona,"fecha":fecha,"materiales":lines,"total":str(total),"saldo":str(total),"pagado_acumulado":"0","estado":"Pendiente"}
+            data={"ticket":ticket,"persona":persona,"fecha":fecha,"materiales":lines,"total":str(total),"saldo":str(total),"pagado_acumulado":"0","estado":"Pendiente","en_pagos":bool(vendor.get("en_pagos",False) and request.form.get("en_pagos")=="1"),"proveedor_id":vendor.get("proveedor_id")}
             rec=Record(module="tickets_entrada",title="Ticket "+ticket+" · "+persona,data=json.dumps(data,ensure_ascii=False),
                        amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush()
@@ -72,7 +72,7 @@ def registrar_ticket():
                 log_action("entrada de material por ticket","inventario",inv.id,f"Ticket {ticket}; {mat.name}: +{kg} kg; stock {mat.stock}")
             log_action("registrar ticket de entrada","tickets_entrada",rec.id,f"Ticket {ticket}; {persona}; total {total}")
             db.session.commit()
-            flash("Ticket registrado. Total: Gs. "+str(total)+". El pago se realiza desde la opción Pagos.")
+            flash("Ticket registrado. Total: Gs. "+str(total)+(". Quedó disponible en Pagos." if data["en_pagos"] else ". Se guardó en el historial; no se envió a Pagos."))
         except (InvalidOperation,ValueError,TypeError):
             db.session.rollback()
             flash("Revisá el número de ticket, proveedor, fecha, materiales, kg y precios.")
@@ -97,6 +97,7 @@ def registrar_ticket():
     <div><label>N.º de ticket</label><input name="ticket" required></div>
     <div><label>Proveedor</label><input name="persona" list="proveedores-lista" required><datalist id="proveedores-lista">{% for v in vendors %}<option value="{{v.nombre}}">{{v.codigo}}</option>{% endfor %}</datalist></div>
     <div><label>Fecha del ticket</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div id="payment-option" style="display:none"><label><input type="checkbox" name="en_pagos" value="1"> Enviar este ticket a Pagos</label></div>
     <div style="grid-column:1/-1"><h3>Materiales</h3><table><tr><th>Material</th><th>Kg</th><th>Precio unitario</th><th>Importe</th><th></th></tr><tbody id="material-lines">
     {% for n in range(2) %}<tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr>{% endfor %}</tbody></table>
     <template id="material-row"><tr><td><select name="material_id[]" class="material-select"><option value="">Elegir</option>{% for m in materials %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select></td><td><input name="kg[]" class="kg-input" type="number" min="0.001" step="0.001"></td><td><input class="price-input" readonly></td><td><input class="subtotal-input" readonly value="0"></td><td><button type="button" class="remove-line">Quitar</button></td></tr></template>
@@ -115,6 +116,9 @@ def pagos_diarios():
     # Mostrar cargas creadas tanto por Registrar ticket como por el formulario anterior Registrar carga.
     records=(Record.query.filter(Record.module.in_(["tickets_entrada","tickets"]))
              .order_by(Record.created_at.desc()).all())
+    # Los tickets nuevos entran a Pagos solo si el proveedor fue marcado en Administrar proveedores.
+    # Los registros históricos sin la marca se mantienen visibles para no perder su seguimiento.
+    records=[r for r in records if _data(r).get("en_pagos",True) is not False]
     q=request.args.get("q","").strip().casefold()
     month=request.args.get("mes",datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m"))
     if q: records=[r for r in records if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
@@ -192,6 +196,9 @@ def pagar_ticket(rid):
             flash("Saldo insuficiente en la cuenta central. No se registró el pago.")
             return redirect(url_for("pagos_diarios"))
         data_ticket=_data(ticket)
+        if data_ticket.get("en_pagos",True) is False:
+            flash("Este ticket queda en el historial, pero su proveedor no está marcado para Pagos en Administrar proveedores.")
+            return redirect(url_for("pagos_diarios"))
         ticket_number=str(data_ticket.get("ticket") or data_ticket.get("numero_ticket") or data_ticket.get("nro_ticket") or ("CARGA-"+str(ticket.id))).strip()
         previous=[]
         for p in Record.query.filter_by(module="pagos_diarios").all():
