@@ -1806,12 +1806,52 @@ def auditoria_informes():
 @app.get("/informes")
 @login_required
 def reports():
-    # Ocultar de Informes por sector los módulos de flota/retiros y mantenimiento de la sección Estación de servicio.
+    # Informes por sector + buscador global para el administrador. No altera ni migra registros.
     available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key)]
+    q=request.args.get("q","").strip().casefold()
+    sector=request.args.get("sector","").strip()
+    since=request.args.get("desde","")
+    until=request.args.get("hasta","")
+    is_admin=current_user().role=="admin"
+    sector_keys=sorted(set(MODULES.keys()) | {m[0] for m in db.session.query(Record.module).distinct().all() if m[0]})
+    records=Record.query.order_by(Record.created_at.desc()).all() if is_admin else []
+    results=[]
+    if is_admin and any([q,sector,since,until]):
+        for rec in records:
+            data={}
+            try: data=json.loads(rec.data or "{}")
+            except Exception: pass
+            dt=local_time(rec.created_at)
+            if sector and rec.module!=sector: continue
+            if since and dt.strftime("%Y-%m-%d")<since: continue
+            if until and dt.strftime("%Y-%m-%d")>until: continue
+            hay=" ".join([rec.title or "",rec.module or "",rec.status or "",str(rec.amount or ""),rec.data or ""]).casefold()
+            if q and q not in hay: continue
+            label=MODULES.get(rec.module,(rec.module,))[0]
+            concept=(data.get("proveedor") or data.get("nombre_proveedor") or data.get("cliente") or data.get("concepto") or data.get("detalle") or data.get("material") or rec.title or label)
+            results.append({"rec":rec,"data":data,"label":label,"concept":str(concept),"when":dt})
     return render_template_string(BASE+"""
-    <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para consultar e imprimir sus operaciones registradas.</p>
-    <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
-    <p><a class="btn" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Informes",available=available)
+    <section class="card"><h2>Buscar informes y registros</h2>
+    {% if is_admin %}
+    <p>Buscá registros ya cargados en cualquier sector, incluidos gastos, proveedores, materiales, tickets, pagos, caja chica, préstamos, fletes y demás movimientos.</p>
+    <form method="get" class="grid">
+      <div><label>Buscar por proveedor, material, concepto, importe o texto</label><input name="q" value="{{q}}" placeholder="Ej.: nombre del proveedor, gasto, cobre..."></div>
+      <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for key in sector_keys %}<option value="{{key}}" {% if sector==key %}selected{% endif %}>{{MODULES.get(key,(key,))[0]}}</option>{% endfor %}</select></div>
+      <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div>
+      <div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
+      <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('reports')}}">Limpiar</a></div>
+    </form>
+    {% if searched %}
+    <p><b>Resultados encontrados:</b> {{results|length}} <button class="btn" type="button" onclick="window.print()">Imprimir resultados</button></p>
+    <div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Proveedor / concepto</th><th>Estado</th><th>Monto (Gs.)</th><th>Detalle</th></tr>
+    {% for row in results %}<tr><td>{{row.when.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{row.label}}</td><td>{{row.rec.title}}</td><td>{{row.concept}}</td><td>{{row.rec.status}}</td><td>{{row.rec.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=row.rec.id)}}">Ver registro</a></td></tr>{% else %}<tr><td colspan="7">No se encontraron registros con esos filtros. Probá con otro sector o una búsqueda más amplia.</td></tr>{% endfor %}</table></div>
+    {% endif %}
+    {% else %}<p>Elegí un sector para consultar sus operaciones registradas.</p>{% endif %}
+    </section>
+    <section class="card"><h2>Informes por sector</h2><div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>
+    <p><a class="btn" href="{{url_for('general_history')}}">Historial general</a></p></section></main><footer>El Toro S.A. · Informes de gestión</footer></body></html>""",
+    title="Informes",available=available,is_admin=is_admin,q=q,sector=sector,since=since,until=until,
+    sector_keys=sector_keys,results=results,searched=bool(q or sector or since or until),MODULES=MODULES)
 
 @app.get("/informes/<module>")
 @login_required
