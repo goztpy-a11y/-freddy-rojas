@@ -60,9 +60,15 @@ class SmokeTests(unittest.TestCase):
 
     def test_receivable_collections_are_not_audited_as_outgoing_payments(self):
         from app import Record
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta de cobro", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            account_id = CompanyAccount.query.filter_by(name="Cuenta de cobro").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "cliente": "Proveedor A", "concepto": "Cuenta de prueba",
-            "importe": "1000", "vencimiento": "2026-11-01", "estado": "Pendiente"
+            "importe": "1000", "moneda": "PYG", "tipo_cambio": "1",
+            "vencimiento": "2026-11-01", "estado": "Pendiente"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
@@ -71,7 +77,8 @@ class SmokeTests(unittest.TestCase):
             rid = original.id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "accion": "pago", "registro_id": str(rid), "importe": "300",
-            "fecha": "2026-10-22", "medio": "Efectivo", "detalle": "Cobro parcial"
+            "fecha": "2026-10-22", "medio": "Efectivo", "detalle": "Cobro parcial",
+            "company_account_id": str(account_id), "tipo_cambio": "1"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
