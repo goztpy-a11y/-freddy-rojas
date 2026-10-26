@@ -77,6 +77,21 @@ def registrar_ticket():
             db.session.rollback()
             flash("Revisá el número de ticket, proveedor, fecha, materiales, kg y precios.")
         return redirect(url_for("registrar_ticket"))
+    q=request.args.get("q","").strip().casefold()
+    history_records=(Record.query.filter(Record.module.in_(["tickets_entrada","tickets"]))
+                     .order_by(Record.created_at.desc()).all())
+    history=[]
+    for r in history_records:
+        try:
+            d=json.loads(r.data or "{}")
+        except (ValueError,TypeError):
+            d={}
+        number=str(d.get("ticket") or d.get("numero_ticket") or d.get("nro_ticket") or ("CARGA-"+str(r.id)))
+        person=str(d.get("persona") or d.get("cliente") or r.title or "")
+        materials_text=" ".join(str(x.get("material","")) for x in d.get("materiales",[]) if isinstance(x,dict))
+        searchable=(number+" "+person+" "+materials_text+" "+str(r.amount or "")).casefold()
+        if not q or q in searchable:
+            history.append((r,d,number,person))
     return _page("Registrar ticket", """
     <section class="card"><h2>Registrar ticket</h2><form method="post" class="grid" id="ticket-form">
     <div><label>N.º de ticket</label><input name="ticket" required></div>
@@ -88,7 +103,12 @@ def registrar_ticket():
     <p><button type="button" id="add-material">Agregar material</button></p><div><label>Total del ticket (Gs.)</label><input id="total" readonly value="0"></div></div>
     <div style="align-self:end"><button>Guardar ticket</button></div></form></section>
     <script type="application/json" id="pago-vendors">{{vendors|tojson}}</script><script type="application/json" id="pago-materials">{{material_data|tojson}}</script><script src="{{url_for('static',filename='registrar_ticket.js')}}" defer></script>
-    """,today=today,materials=materials,vendors=vendors,material_data=[{"id":m.id,"name":m.name} for m in materials])
+    <section class="card"><h2>Historial de tickets registrados</h2>
+    <form method="get" class="grid"><div><label>Buscar ticket, proveedor o material</label><input name="q" value="{{q}}" placeholder="Número de ticket, proveedor o material"></div><div style="align-self:end"><button>Buscar</button> <a class="btn" href="{{url_for('registrar_ticket')}}">Limpiar</a></div></form>
+    <p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
+    <div style="overflow-x:auto"><table><tr><th>Fecha</th><th>N.º de ticket</th><th>Proveedor</th><th>Materiales</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
+    {% for r,d,number,person in history %}<tr><td>{{d.get('fecha') or local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{number}}</td><td>{{person}}</td><td>{% for line in d.get('materiales',[]) %}{{line.get('material','—')}} · {{line.get('kg',line.get('cantidad',''))}} kg · Gs. {{line.get('importe',line.get('total',''))}}<br>{% endfor %}</td><td>Gs. {{r.amount or d.get('total','0')}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Ver ticket</a></td></tr>{% else %}<tr><td colspan="7">No hay tickets registrados que coincidan con la búsqueda.</td></tr>{% endfor %}</table></div></section>
+    """,today=today,materials=materials,vendors=vendors,material_data=[{"id":m.id,"name":m.name} for m in materials],history=history,q=q,local_time=local_time)
 
 def pagos_diarios():
     _can_caja()
