@@ -790,13 +790,27 @@ def toggle_ticket_payments(rid):
     except (ValueError, TypeError):
         data = {}
     include_in_payments = request.form.get("en_pagos") == "1"
-    data["en_pagos"] = include_in_payments
+    supplier_name = str(data.get("cliente") or data.get("persona") or data.get("proveedor") or "").strip().casefold()
+    supplier_enabled = False
+    for supplier_record in Record.query.filter_by(module="proveedores").all():
+        try:
+            supplier_data = json.loads(supplier_record.data or "{}")
+        except (ValueError, TypeError):
+            supplier_data = {}
+        if str(supplier_data.get("nombre", "")).strip().casefold() == supplier_name:
+            supplier_enabled = bool(supplier_data.get("en_pagos", False))
+            break
+    # La autorización de Administración de proveedores es obligatoria para incluir una carga en Pagos.
+    if include_in_payments and not supplier_enabled:
+        flash("No se puede mostrar esta carga en Pagos: el proveedor no está habilitado en Administración de proveedores.")
+        return redirect(url_for("module_page", module="tickets", q=request.form.get("q", "")))
+    data["en_pagos"] = bool(include_in_payments and supplier_enabled)
     rec.data = json.dumps(data, ensure_ascii=False)
     rec.updated_at = paraguay_now()
     log_action("actualizar inclusión de ticket en Pagos", "tickets", rec.id,
-               ("Incluido en Pagos" if include_in_payments else "Excluido de Pagos") + " · ticket " + str(data.get("numero_ticket", rec.id)))
+               ("Incluido en Pagos" if data["en_pagos"] else "Excluido de Pagos") + " · ticket " + str(data.get("numero_ticket", rec.id)))
     db.session.commit()
-    flash("Ticket actualizado: " + ("ahora está incluido en Pagos." if include_in_payments else "se mantiene en el historial y fue excluido de Pagos."))
+    flash("Ticket actualizado: " + ("ahora está incluido en Pagos." if data["en_pagos"] else "se mantiene en el historial y fue excluido de Pagos."))
     return redirect(url_for("module_page", module="tickets", q=request.form.get("q", "")))
 
 
@@ -994,19 +1008,40 @@ def module_page(module):
             flash("Carga guardada y stock de materiales actualizado automáticamente.")
             return redirect(url_for("module_page",module=module))
         q=request.args.get("q","").strip().casefold(); hist=Record.query.filter_by(module="tickets").order_by(Record.created_at.desc()).all()
-        parsed=[(r,json.loads(r.data or "{}")) for r in hist if not q or q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
+        supplier_payment_permissions={}
+        for supplier_record in Record.query.filter_by(module="proveedores").all():
+            try:
+                supplier_data=json.loads(supplier_record.data or "{}")
+            except (ValueError,TypeError):
+                supplier_data={}
+            supplier_name=str(supplier_data.get("nombre","")).strip().casefold()
+            if supplier_name:
+                supplier_payment_permissions[supplier_name]=bool(supplier_data.get("en_pagos",False))
+        parsed=[]
+        for record in hist:
+            try:
+                record_data=json.loads(record.data or "{}")
+            except (ValueError,TypeError):
+                record_data={}
+            supplier_name=str(record_data.get("cliente") or record_data.get("persona") or record_data.get("proveedor") or "").strip().casefold()
+            supplier_enabled=supplier_payment_permissions.get(supplier_name,False)
+            record_data["_proveedor_habilitado_pagos"]=supplier_enabled
+            # Mostrar el estado efectivo sin modificar los datos históricos originales.
+            record_data["en_pagos"]=bool(record_data.get("en_pagos",supplier_enabled) and supplier_enabled)
+            if not q or q in (record.title+" "+record.data+" "+str(record.amount)).casefold():
+                parsed.append((record,record_data))
         return render_template_string(BASE+"""
         <section class="card"><h2>{{title}}</h2><form method="post" id="ticket-form"><div class="grid">
         <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required>
         <div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
         <div><label>N.º de ticket <span style="color:#c00">*</span></label><input name="numero_ticket" type="text" autocomplete="off" placeholder="Ingresá el número de ticket" required></div>
-        <div><label>Cuenta bancaria del proveedor (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div><div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" id="ticket-en-pagos" value="1" checked> Incluir esta carga en Pagos</label><small>Si no se marca, la carga igual queda guardada y suma al registro y a la deuda del proveedor, pero no debe enviarse a Pagos.</small></div></div>
+        <div><label>Cuenta bancaria del proveedor (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div><div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" id="ticket-en-pagos" value="1" disabled> Mostrar esta carga en Pagos</label><small>Solo se puede habilitar si el proveedor está autorizado en Administración de proveedores. Si queda oculta, la carga y su deuda siguen acumulándose.</small></div></div>
         <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Monto a pagar por este material (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar proveedor, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
         <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>En Pagos</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{'Sí' if d.get('en_pagos',False) else 'No'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a>
-<form method="post" action="{{url_for('toggle_ticket_payments',rid=r.id)}}" style="display:inline-block;margin:4px 0">
-<input type="hidden" name="q" value="{{q}}"><button class="btn" name="en_pagos" value="{{'0' if d.get('en_pagos',False) else '1'}}" type="submit">{{'Quitar de Pagos' if d.get('en_pagos',False) else 'Incluir en Pagos'}}</button></form></td></tr>{% endfor %}</table></section>
+{% if d.get('_proveedor_habilitado_pagos') %}<form method="post" action="{{url_for('toggle_ticket_payments',rid=r.id)}}" style="display:inline-block;margin:4px 0">
+<input type="hidden" name="q" value="{{q}}"><button class="btn" name="en_pagos" value="{{'0' if d.get('en_pagos',False) else '1'}}" type="submit">{{'Ocultar de Pagos' if d.get('en_pagos',False) else 'Mostrar en Pagos'}}</button></form>{% else %}<small>Proveedor no habilitado por Administración</small>{% endif %}</td></tr>{% endfor %}</table></section>
         <script>
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
         const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
@@ -1014,13 +1049,23 @@ def module_page(module):
         function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
         function selectedVendor(){const s=norm(clientField.value);return ticketVendors.find(v=>norm(v.nombre)===s||norm(v.codigo)===s);}
         const includePayments=document.getElementById("ticket-en-pagos");
-        // La decisión de incluir este ticket es individual; no se cambia al elegir proveedor.
+        // La autorización del proveedor en Administración es obligatoria para mostrar cargas en Pagos.
+        function syncPaymentOption(resetChoice=false){
+          const vendor=selectedVendor();
+          const enabled=!!(vendor&&vendor.en_pagos);
+          if(resetChoice) includePayments.dataset.userChanged='';
+          includePayments.disabled=!enabled;
+          if(!enabled) includePayments.checked=false;
+          else if(includePayments.dataset.userChanged!=='yes') includePayments.checked=true;
+        }
+        includePayments.addEventListener('change',()=>{includePayments.dataset.userChanged='yes';});
         function showVendorMatches(){
           const q=norm(clientField.value);suggestions.replaceChildren();
+          syncPaymentOption(true);
           if(!q){suggestions.style.display='none';return;}
           const matches=ticketVendors.filter(v=>norm(v.nombre).includes(q)||norm(v.codigo).includes(q)).slice(0,12);
           if(!matches.length){suggestions.style.display='none';return;}
-          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
+          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';syncPaymentOption(true);updatePrices(true);clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
           suggestions.style.display='block';
         }
         function updatePrices(force=false, changedRow=null){
@@ -1050,7 +1095,7 @@ def module_page(module):
           row.querySelector('[name="material"]').required=false;row.querySelector('[name="cantidad"]').required=false;root.appendChild(row);updateGrandTotal();
         }
         clientField.addEventListener('input',showVendorMatches);
-        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);});
+        clientField.addEventListener('change',()=>{suggestions.style.display='none';syncPaymentOption(true);updatePrices(true);});
         // No cerrar en blur: en móviles el toque puede quitar el foco antes del click de la sugerencia.
         // El menú se cierra al seleccionar un proveedor o al tocar fuera del listado.
         document.addEventListener('click',e=>{if(!suggestions.contains(e.target)&&e.target!==clientField)suggestions.style.display='none';});

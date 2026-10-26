@@ -107,13 +107,17 @@ def crear_pago_diario():
         if str(_data(r).get("numero_ticket",_data(r).get("nro_ticket",_data(r).get("ticket","")))).strip().casefold()==ticket.casefold()),None)
     if source_ticket:
         source_data=_data(source_ticket)
-        if "en_pagos" in source_data:
-            allowed_in_payments=bool(source_data.get("en_pagos"))
-        else:
-            source_vendor=str(source_data.get("cliente",source_data.get("persona",source_data.get("proveedor","")))).strip().casefold()
-            allowed_in_payments=any(str(_data(v).get("nombre","")).strip().casefold()==source_vendor and bool(_data(v).get("en_pagos",False)) for v in _rows("proveedores"))
+        source_vendor=str(source_data.get("cliente",source_data.get("persona",source_data.get("proveedor","")))).strip().casefold()
+        provider_enabled=any(
+            str(_data(v).get("nombre","")).strip().casefold()==source_vendor
+            and bool(_data(v).get("en_pagos",False))
+            for v in _rows("proveedores")
+        )
+        # La habilitación del proveedor siempre prevalece; la carga además debe estar visible en Pagos.
+        ticket_enabled=bool(source_data.get("en_pagos",provider_enabled))
+        allowed_in_payments=provider_enabled and ticket_enabled
         if not allowed_in_payments:
-            flash("Este ticket está guardado en el historial, pero está marcado como NO incluir en Pagos. No se registró ningún pago.")
+            flash("Esta carga permanece en el historial y su deuda sigue acumulándose, pero no está habilitada para Pagos por la configuración del proveedor o de la carga.")
             return redirect(url_for("pagos_diarios"))
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
