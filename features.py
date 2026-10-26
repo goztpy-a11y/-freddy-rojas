@@ -1286,8 +1286,8 @@ def _professional_reports():
           <div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
           <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('reports')}}">Limpiar</a></div>
         </form></section>
-        <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para abrir su informe. Los registros se muestran solamente después de entrar al informe correspondiente.</p>
-        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{{url_for('reports',sector=key)}}">Abrir informe</a></p></div>{% endfor %}</div></section>
+        {% if not (sector or q or since or until) %}<section class="card"><h2>Informes por sector</h2><p>Elegí un sector para abrir su informe. Los registros se muestran solamente después de entrar al informe correspondiente.</p>
+        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{% if key in module_keys %}{{url_for('report_module',module=key)}}{% else %}{{url_for('reports',sector=key)}}{% endif %}">Abrir informe</a></p></div>{% endfor %}</div></section>{% endif %}
         <section class="card"><h2>{% if sector %}Informe: {{dict(available).get(sector,sector)}}{% elif q or since or until %}Resultados de búsqueda{% else %}Buscar en informes{% endif %}</h2>
         <form method="get" class="grid">
           <div><label>Buscar en los datos de los informes</label><input name="q" value="{{q}}" placeholder="Proveedor, material, camión, ticket, importe..."></div>
