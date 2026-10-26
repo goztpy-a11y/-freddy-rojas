@@ -952,9 +952,10 @@ def ventas_caja():
             cliente=request.form.get("cliente","").strip()
             concepto=request.form.get("concepto","").strip()
             fecha=request.form.get("fecha",paraguay_now().strftime("%Y-%m-%d")).strip()
+            hora=request.form.get("hora",paraguay_now().strftime("%H:%M")).strip()
             medio=request.form.get("medio","").strip()
             amount=Decimal(request.form.get("importe","").strip().replace(",", ".")).quantize(Decimal("0.01"))
-            if not cliente or not concepto or not fecha or amount<=0 or medio not in ("Efectivo","Transferencia"):
+            if not cliente or not concepto or not fecha or not hora or len(hora)!=5 or hora[2] != ":" or amount<=0 or medio not in ("Efectivo","Transferencia"):
                 raise InvalidOperation()
             account=None
             if medio=="Transferencia":
@@ -963,7 +964,7 @@ def ventas_caja():
                 if not account:
                     raise InvalidOperation()
                 account.balance=Decimal(str(account.balance or 0))+amount
-            data={"cliente":cliente,"concepto":concepto,"fecha":fecha,"importe":str(amount),"medio":medio,
+            data={"cliente":cliente,"concepto":concepto,"fecha":fecha,"hora":hora,"importe":str(amount),"medio":medio,
                   "cuenta_empresa":account.name if account else "Caja chica","company_account_id":account.id if account else None}
             sale=Record(module="ventas_caja",title="Venta · "+cliente,data=json.dumps(data,ensure_ascii=False),amount=amount,
                         status="Registrada",created_by=current_user().id,company_account_id=account.id if account else None)
@@ -991,12 +992,12 @@ def ventas_caja():
     <section class="card"><h2>Registrar venta</h2><form method="post" class="grid">
     <div><label>Cliente</label><input name="cliente" required></div><div><label>Concepto de la venta</label><input name="concepto" required></div>
     <div><label>Importe (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
-    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
-    <div><label>Forma de pago</label><select name="medio" id="sale-method" required><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
+    <div><label>Fecha de la venta</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Hora de la venta</label><input name="hora" type="time" value="{{now_time}}" required></div>
+    <div><label>Forma de cobro</label><select name="medio" id="sale-method" required><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
     <div id="sale-account-wrap"><label>Cuenta principal que recibirá las transferencias</label><input value="{{main_account.name if main_account else 'No hay una cuenta bancaria activa'}}" readonly></div>
     <div style="align-self:end"><button>Guardar venta</button></div></form><p><b>Saldo actual de Caja chica:</b> Gs. {{balance}}</p></section>
-    <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
-    """,rows=rows,accounts=accounts,main_account=main_account,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
+    <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{d.get('hora') or local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
+    """,rows=rows,accounts=accounts,main_account=main_account,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),now_time=paraguay_now().strftime("%H:%M"),decode=_data)
 
 
 # Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
