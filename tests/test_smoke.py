@@ -144,8 +144,9 @@ class SmokeTests(unittest.TestCase):
             "detalle_concepto": "Prueba", "medio": "Efectivo",
             "comprobante": "G-001", "item[]": ["Guantes", "Llave"],
             "cantidad_item[]": ["2", "1"], "total_item[]": ["30000", "25000"]
-        })
-        self.assertEqual(response.status_code, 302)
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Gasto guardado", response.data, response.data.decode("utf-8", errors="replace")[-2000:])
         with app.app_context():
             from app import Record
             rec = Record.query.filter_by(module="gastos").first()
