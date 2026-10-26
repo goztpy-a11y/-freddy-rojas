@@ -1807,7 +1807,7 @@ def auditoria_informes():
 @login_required
 def reports():
     # Ocultar de Informes por sector los módulos de flota/retiros y mantenimiento de la sección Estación de servicio.
-    available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key) and key not in ("flota", "mantenimiento")]
+    available=[(key,meta[0]) for key,meta in MODULES.items() if allowed(key)]
     return render_template_string(BASE+"""
     <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para consultar e imprimir sus operaciones registradas.</p>
     <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p><a class="btn" href="{{url_for('report_module',module=key)}}">Abrir informe</a></p></div>{% endfor %}</div>

@@ -12,10 +12,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const vendor = () => vendors.find(v => v.nombre.toLowerCase() === person.value.trim().toLowerCase());
   const fmt = n => (Number(n) || 0).toFixed(2);
   function updatePaymentOption() {
-    const v = vendor();
-    const eligible = Boolean(v && v.en_pagos);
-    paymentOption.style.display = eligible ? "" : "none";
-    if (!eligible) paymentCheckbox.checked = false;
+    // La inclusión depende de la casilla del ticket, no de la configuración del proveedor.
+    paymentOption.style.display = "";
   }
   function recalc() {
     let sum = 0, v = vendor();
