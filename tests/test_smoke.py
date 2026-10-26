@@ -66,9 +66,9 @@ class SmokeTests(unittest.TestCase):
         with app.app_context():
             account_id = CompanyAccount.query.filter_by(name="Cuenta de cobro").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
-            "cliente": "Proveedor A", "concepto": "Cuenta de prueba",
-            "importe": "1000", "moneda": "PYG", "tipo_cambio": "1",
-            "vencimiento": "2026-11-01", "estado": "Pendiente"
+            "cliente": "Proveedor A", "numero_ticket": "T-1001", "material": "Chatarra",
+            "cantidad_kg": "1", "precio_kg": "1000", "moneda": "PYG", "tipo_cambio": "1",
+            "vencimiento": "2026-11-01"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
@@ -125,10 +125,9 @@ class SmokeTests(unittest.TestCase):
         with app.app_context():
             account_id = CompanyAccount.query.filter_by(name="Cuenta cobros").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
-            "cliente": "Cliente USD", "concepto": "Factura exportación",
-            "importe": "100", "moneda": "USD", "tipo_cambio": "7300",
-            "factura": "F-001", "fecha_factura": "2026-10-25",
-            "vencimiento": "", "estado": "Pendiente"
+            "cliente": "Cliente USD", "numero_ticket": "T-USD-001", "material": "Cobre",
+            "cantidad_kg": "1", "precio_kg": "100", "moneda": "USD", "tipo_cambio": "7300",
+            "factura": "F-001", "fecha_factura": "2026-10-25", "vencimiento": ""
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
