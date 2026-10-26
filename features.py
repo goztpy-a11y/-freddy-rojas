@@ -212,6 +212,24 @@ def proveedores():
     _can_caja()
     from app import Material
     mats=Material.query.order_by(Material.name).all()
+    summary={}
+    payments=_rows("pagos_diarios")
+    for ticket in _rows("tickets"):
+        td=_data(ticket); supplier=str(td.get("cliente") or "").strip().casefold()
+        if not supplier: continue
+        entry=summary.setdefault(supplier,{"kg":Decimal("0"),"monto":Decimal("0"),"pagado":Decimal("0")})
+        try: entry["monto"]+=Decimal(str(td.get("total",ticket.amount) or 0))
+        except (InvalidOperation,ValueError): pass
+        for line in (td.get("materiales",[]) or []):
+            try: entry["kg"]+=Decimal(str(line.get("cantidad",line.get("kg",0)) or 0).replace(",","."))
+            except (InvalidOperation,ValueError,AttributeError): pass
+        number=str(td.get("numero_ticket",td.get("nro_ticket",""))).strip().casefold()
+        if number:
+            entry["pagado"]+=sum((Decimal(str(p.amount or 0)) for p in payments if str(_data(p).get("ticket","")).strip().casefold()==number),Decimal("0"))
+    provider_summary=[]
+    for pr in _rows("proveedores"):
+        pd=_data(pr); sums=summary.get(str(pd.get("nombre","")).strip().casefold(),{"kg":Decimal("0"),"monto":Decimal("0"),"pagado":Decimal("0")})
+        provider_summary.append({"nombre":pd.get("nombre",""),"codigo":pd.get("codigo",""),"kg":sums["kg"].quantize(Decimal("0.001")),"deuda":max(Decimal("0"),sums["monto"]-sums["pagado"]).quantize(Decimal("0.01")),"id":pr.id})
     if request.method=="POST":
         nombre=request.form.get("nombre","").strip()
         if not nombre:
@@ -250,8 +268,10 @@ def proveedores():
     </table></div></div>
     <div style="align-self:end"><button class="btn">Guardar proveedor y precios</button></div>
     </form></section>
-    <section class="card"><p>Para consultar el listado completo, ingresá en <a href="{{url_for('listado_proveedores')}}">Proveedores</a>.</p></section>
-    """,mats=mats)
+    <section class="card"><h2>Resumen de kg y deuda por proveedor</h2><p>El total incluye todas las cargas guardadas, estén o no marcadas para Pagos. Los pagos ya registrados se descuentan del monto adeudado.</p><div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>Kg registrados</th><th>Monto adeudado (Gs.)</th><th>Detalle</th></tr>
+    {% for p in provider_summary %}<tr><td>{{p.codigo}}</td><td>{{p.nombre}}</td><td><b>{{p.kg}}</b> kg</td><td><b>Gs. {{p.deuda}}</b></td><td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=p.nombre)}}">Ver movimientos</a></td></tr>{% else %}<tr><td colspan="5">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div>
+    <p>Para consultar el listado completo, ingresá en <a href="{{url_for('listado_proveedores')}}">Proveedores</a>.</p></section>
+    """,mats=mats,provider_summary=provider_summary)
 
 
 @app.get("/auditoria/movimientos-proveedores")
