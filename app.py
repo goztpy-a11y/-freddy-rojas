@@ -777,6 +777,29 @@ def admin_section(section):
     """, title=data[0], data=data)
 
 
+@app.post("/tickets/<int:rid>/toggle-pagos")
+@login_required
+def toggle_ticket_payments(rid):
+    if current_user().role != "admin" and not allowed("caja"):
+        abort(403)
+    rec = db.session.get(Record, rid)
+    if not rec or rec.module != "tickets":
+        abort(404)
+    try:
+        data = json.loads(rec.data or "{}")
+    except (ValueError, TypeError):
+        data = {}
+    include_in_payments = request.form.get("en_pagos") == "1"
+    data["en_pagos"] = include_in_payments
+    rec.data = json.dumps(data, ensure_ascii=False)
+    rec.updated_at = paraguay_now()
+    log_action("actualizar inclusión de ticket en Pagos", "tickets", rec.id,
+               ("Incluido en Pagos" if include_in_payments else "Excluido de Pagos") + " · ticket " + str(data.get("numero_ticket", rec.id)))
+    db.session.commit()
+    flash("Ticket actualizado: " + ("ahora está incluido en Pagos." if include_in_payments else "se mantiene en el historial y fue excluido de Pagos."))
+    return redirect(url_for("module_page", module="tickets", q=request.form.get("q", "")))
+
+
 @app.route("/modulo/<module>", methods=["GET","POST"])
 @login_required
 def module_page(module):
@@ -981,7 +1004,9 @@ def module_page(module):
         <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Monto a pagar por este material (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar proveedor, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>En Pagos</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{'Sí' if d.get('en_pagos',False) else 'No'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>En Pagos</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{'Sí' if d.get('en_pagos',False) else 'No'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a>
+<form method="post" action="{{url_for('toggle_ticket_payments',rid=r.id)}}" style="display:inline-block;margin:4px 0">
+<input type="hidden" name="q" value="{{q}}"><button class="btn" name="en_pagos" value="{{'0' if d.get('en_pagos',False) else '1'}}" type="submit">{{'Quitar de Pagos' if d.get('en_pagos',False) else 'Incluir en Pagos'}}</button></form></td></tr>{% endfor %}</table></section>
         <script>
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
         const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
