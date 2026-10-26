@@ -1276,7 +1276,7 @@ def _professional_reports():
         return render_template_string(BASE+"""
         <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{background:#dce6f1}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{padding:9px;border-bottom:1px solid #e1e8f0;text-align:left;vertical-align:top;white-space:normal}</style>
         <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para abrir su informe. Los registros se muestran solamente después de entrar al informe correspondiente.</p>
-        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{{url_for('reports',sector=key)}}">Abrir informe</a></p></div>{% endfor %}</div></section>
+        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{% if key in MODULES %}{{url_for('report_module',module=key)}}{% else %}{{url_for('reports',sector=key)}}{% endif %}">Abrir informe</a></p></div>{% endfor %}</div></section>
         <section class="card"><h2>{% if sector %}Informe: {{dict(available).get(sector,sector)}}{% elif q or since or until %}Resultados de búsqueda{% else %}Buscar en informes{% endif %}</h2>
         <form method="get" class="grid">
           <div><label>Buscar en los datos de los informes</label><input name="q" value="{{q}}" placeholder="Proveedor, material, camión, ticket, importe..."></div>
