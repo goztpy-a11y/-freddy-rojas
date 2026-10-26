@@ -67,13 +67,14 @@ class SmokeTests(unittest.TestCase):
             account_id = CompanyAccount.query.filter_by(name="Cuenta de cobro").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "cliente": "Proveedor A", "numero_ticket": "T-1001", "material": "Chatarra",
-            "cantidad_kg": "1", "precio_kg": "1000", "moneda": "PYG", "tipo_cambio": "1",
+            "cantidad_kg": "2", "precio_kg": "500", "moneda": "PYG", "tipo_cambio": "1",
             "vencimiento": "2026-11-01"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
             original = Record.query.filter_by(module="cuentas_cobrar").first()
             self.assertIsNotNone(original)
+            self.assertEqual(str(original.amount), "1000.00")
             rid = original.id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "accion": "pago", "registro_id": str(rid), "importe": "300",
@@ -86,6 +87,25 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(Record.query.filter_by(module="pagos_cuentas").count(), 0)
             original = db.session.get(Record, rid)
             self.assertEqual(original.status, "En proceso")
+
+    def test_receivable_ticket_total_is_calculated_and_ticket_is_unique(self):
+        from app import Record
+        data = {
+            "cliente": "Cliente A", "numero_ticket": "T-UNICO-01", "material": "Cobre",
+            "cantidad_kg": "12500", "precio_kg": "1800", "moneda": "PYG",
+            "tipo_cambio": "1"
+        }
+        response = self.client.post("/modulo/cuentas_cobrar", data=data)
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            rec = Record.query.filter_by(module="cuentas_cobrar").first()
+            self.assertEqual(str(rec.amount), "22500000.00")
+            self.assertEqual(rec.status, "Pendiente")
+        response = self.client.post("/modulo/cuentas_cobrar", data=data, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ese número de ticket ya está registrado".encode(), response.data)
+        with app.app_context():
+            self.assertEqual(Record.query.filter_by(module="cuentas_cobrar").count(), 1)
 
     def test_multiple_company_accounts_have_separate_currency_balances(self):
         self.client.post("/modulo/cuentas_empresa", data={
@@ -126,7 +146,7 @@ class SmokeTests(unittest.TestCase):
             account_id = CompanyAccount.query.filter_by(name="Cuenta cobros").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "cliente": "Cliente USD", "numero_ticket": "T-USD-001", "material": "Cobre",
-            "cantidad_kg": "1", "precio_kg": "100", "moneda": "USD", "tipo_cambio": "7300",
+            "cantidad_kg": "2", "precio_kg": "50", "moneda": "USD", "tipo_cambio": "7300",
             "factura": "F-001", "fecha_factura": "2026-10-25", "vencimiento": ""
         })
         self.assertEqual(response.status_code, 302)
