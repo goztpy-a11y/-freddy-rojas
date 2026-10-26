@@ -24,6 +24,7 @@ MODULES.update({
     "gomeria_inventario": ("Inventario de materiales de gomería", "gomeria", []),
     "gomeria_movimientos": ("Movimientos de inventario de gomería", "gomeria", []),
     "caja_chica": ("Caja chica", "caja", []),
+    "ventas_caja": ("Ventas de Caja", "caja", []),
     "informe_materiales": ("Informe de materiales", "inventario", []),
 })
 
@@ -938,6 +939,61 @@ def fletes():
     <table><tr><th>Fecha</th><th>Chofer</th><th>Destino</th><th>Camión</th><th>Importe</th><th>Detalle</th><th>Imprimir</th></tr>
     {% for r,d in rows %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('chofer')}}</td><td>{{d.get('destino')}}</td><td>{{d.get('camion')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('detalle')}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section>
     """,rows=rows,q=q,equip=equip,today=paraguay_now().strftime("%Y-%m-%d"))
+
+
+@app.route("/caja/ventas", methods=["GET", "POST"])
+@login_required
+def ventas_caja():
+    _can_caja()
+    if request.method == "POST":
+        try:
+            cliente=request.form.get("cliente","").strip()
+            concepto=request.form.get("concepto","").strip()
+            fecha=request.form.get("fecha",paraguay_now().strftime("%Y-%m-%d")).strip()
+            medio=request.form.get("medio","").strip()
+            amount=Decimal(request.form.get("importe","").strip().replace(",", ".")).quantize(Decimal("0.01"))
+            if not cliente or not concepto or not fecha or amount<=0 or medio not in ("Efectivo","Transferencia"):
+                raise InvalidOperation()
+            account=None
+            if medio=="Transferencia":
+                try: account=db.session.get(CompanyAccount,int(request.form.get("account_id","")))
+                except (ValueError,TypeError): account=None
+                if not account or not account.active:
+                    raise InvalidOperation()
+                account.balance=Decimal(str(account.balance or 0))+amount
+            data={"cliente":cliente,"concepto":concepto,"fecha":fecha,"importe":str(amount),"medio":medio,
+                  "cuenta_empresa":account.name if account else "Caja chica","company_account_id":account.id if account else None}
+            sale=Record(module="ventas_caja",title="Venta · "+cliente,data=json.dumps(data,ensure_ascii=False),amount=amount,
+                        status="Registrada",created_by=current_user().id,company_account_id=account.id if account else None)
+            db.session.add(sale); db.session.flush()
+            if medio=="Efectivo":
+                current_balance=_caja_chica_balance()
+                new_balance=current_balance+amount
+                _save("caja_chica","Venta en efectivo · "+cliente,{
+                    "tipo":"saldo","fecha":fecha,"saldo":str(new_balance),"detalle":"Ingreso por venta: "+concepto,
+                    "medio":"Efectivo","clasificacion":"ingreso_venta","origen":"venta_caja","venta_id":sale.id,"importe":str(amount)
+                },amount,"Ingreso por venta")
+            log_action("registrar venta en caja","ventas_caja",sale.id,
+                       f"{cliente}; importe {amount}; medio {medio}; destino {data['cuenta_empresa']}")
+            db.session.commit()
+            flash("Venta registrada. "+("El efectivo se sumó a Caja chica." if medio=="Efectivo" else "El importe se sumó a la cuenta bancaria seleccionada."))
+        except (InvalidOperation,ValueError,TypeError):
+            db.session.rollback()
+            flash("Revisá el cliente, concepto, fecha, importe y cuenta de destino.")
+        return redirect(url_for("ventas_caja"))
+    rows=_rows("ventas_caja")
+    accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.name).all()
+    balance=_caja_chica_balance()
+    return _page("Registrar venta", """
+    <section class="card"><h2>Registrar venta</h2><form method="post" class="grid">
+    <div><label>Cliente</label><input name="cliente" required></div><div><label>Concepto de la venta</label><input name="concepto" required></div>
+    <div><label>Importe (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
+    <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
+    <div><label>Forma de pago</label><select name="medio" id="sale-method" required onchange="document.getElementById('sale-account-wrap').style.display=this.value==='Transferencia'?'block':'none';"><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
+    <div id="sale-account-wrap" style="display:none"><label>Cuenta bancaria que recibirá el dinero</label><select name="account_id"><option value="">Seleccionar cuenta</option>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · saldo PYG {{a.balance}}</option>{% endfor %}</select></div>
+    <div style="align-self:end"><button>Guardar venta</button></div></form><p><b>Saldo actual de Caja chica:</b> Gs. {{balance}}</p></section>
+    <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
+    """,rows=rows,accounts=accounts,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 
 # Caja chica: saldo disponible, gastos clasificados y trazabilidad de movimientos.
