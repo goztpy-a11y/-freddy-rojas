@@ -60,9 +60,15 @@ class SmokeTests(unittest.TestCase):
 
     def test_receivable_collections_are_not_audited_as_outgoing_payments(self):
         from app import Record
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta de cobro", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            account_id = CompanyAccount.query.filter_by(name="Cuenta de cobro").first().id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "cliente": "Proveedor A", "concepto": "Cuenta de prueba",
-            "importe": "1000", "vencimiento": "2026-11-01", "estado": "Pendiente"
+            "importe": "1000", "moneda": "PYG", "tipo_cambio": "1",
+            "vencimiento": "2026-11-01", "estado": "Pendiente"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
@@ -71,7 +77,8 @@ class SmokeTests(unittest.TestCase):
             rid = original.id
         response = self.client.post("/modulo/cuentas_cobrar", data={
             "accion": "pago", "registro_id": str(rid), "importe": "300",
-            "fecha": "2026-10-22", "medio": "Efectivo", "detalle": "Cobro parcial"
+            "fecha": "2026-10-22", "medio": "Efectivo", "detalle": "Cobro parcial",
+            "company_account_id": str(account_id), "tipo_cambio": "1"
         })
         self.assertEqual(response.status_code, 302)
         with app.app_context():
@@ -79,6 +86,66 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(Record.query.filter_by(module="pagos_cuentas").count(), 0)
             original = db.session.get(Record, rid)
             self.assertEqual(original.status, "En proceso")
+
+    def test_multiple_company_accounts_have_separate_currency_balances(self):
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta de prueba", "banco": "Banco", "numero": "001",
+            "saldo_inicial_pyg": "100000", "saldo_inicial_usd": "50"
+        })
+        with app.app_context():
+            account = CompanyAccount.query.filter_by(name="Cuenta de prueba").first()
+            self.assertIsNotNone(account)
+            self.assertEqual(str(account.balance), "100000.00")
+            self.assertEqual(str(account.balance_usd), "50.00")
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Segunda cuenta", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            self.assertEqual(CompanyAccount.query.count(), 2)
+
+    def test_caja_can_open_receivables_and_payables(self):
+        with app.app_context():
+            caja_user = User(username="caja_test", password_hash=generate_password_hash("test-password"),
+                             role="caja", areas="caja")
+            db.session.add(caja_user)
+            db.session.commit()
+            caja_id = caja_user.id
+        with self.client.session_transaction() as sess:
+            sess["uid"] = caja_id
+        for path in ("/modulo/cuentas_cobrar", "/modulo/cuentas_pagar"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+
+    def test_usd_receivable_collection_credits_selected_account(self):
+        from app import Record
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta cobros", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            account_id = CompanyAccount.query.filter_by(name="Cuenta cobros").first().id
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "cliente": "Cliente USD", "concepto": "Factura exportación",
+            "importe": "100", "moneda": "USD", "tipo_cambio": "7300",
+            "factura": "F-001", "fecha_factura": "2026-10-25",
+            "vencimiento": "", "estado": "Pendiente"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            rid = Record.query.filter_by(module="cuentas_cobrar").first().id
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "accion": "pago", "registro_id": str(rid), "importe": "40",
+            "fecha": "2026-10-26", "medio": "Transferencia", "detalle": "Cobro parcial",
+            "company_account_id": str(account_id), "tipo_cambio": "7300"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            account = db.session.get(CompanyAccount, account_id)
+            self.assertEqual(str(account.balance_usd), "40.00")
+            self.assertEqual(str(account.balance), "0.00")
+            payment = Record.query.filter_by(module="cobros_cuentas").first()
+            self.assertEqual(payment.company_account_id, account_id)
+            self.assertIn('"importe_pyg": "292000.00"', payment.data)
 
     def test_expense_with_multiple_items(self):
         with app.app_context():
@@ -90,9 +157,10 @@ class SmokeTests(unittest.TestCase):
             "fecha": "2026-10-22", "categoria": "Herramientas", "concepto": "Otros gastos",
             "detalle_concepto": "Prueba", "medio": "Efectivo",
             "comprobante": "G-001", "item[]": ["Guantes", "Llave"],
-            "cantidad_item[]": ["2", "1"], "precio_item[]": ["15000", "25000"]
-        })
-        self.assertEqual(response.status_code, 302)
+            "cantidad_item[]": ["2", "1"], "total_item[]": ["30000", "25000"]
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Gasto guardado", response.data, response.data.decode("utf-8", errors="replace")[-2000:])
         with app.app_context():
             from app import Record
             rec = Record.query.filter_by(module="gastos").first()
