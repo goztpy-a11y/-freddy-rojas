@@ -1250,7 +1250,7 @@ def module_page(module):
             data={key:("Sí" if request.form.get(key) else "No") if kind=="checkbox" else request.form.get(key,"").strip()
                   for key,label,kind,req in fields}
             if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("moneda"): data["moneda"]="PYG"
-            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("tipo_cambio"): data["tipo_cambio"]="1"
+            if module in ("cuentas_pagar","cuentas_cobrar") and not data.get("tipo_cambio") and str(data.get("moneda","PYG")).upper()=="PYG": data["tipo_cambio"]="1"
             if module=="cuentas_cobrar" and not data.get("estado"): data["estado"]="Pendiente"
             if module=="cheques" and not data.get("estado"): data["estado"]="Pendiente"
             for key,label,kind,req in fields:
