@@ -176,14 +176,19 @@ with app.app_context():
     from sqlalchemy import inspect
     if "company_account" in inspect(db.engine).get_table_names():
         account_cols = {c["name"] for c in inspect(db.engine).get_columns("company_account")}
+        migration_done = SystemSetting.query.filter_by(key="company_account_dual_currency_migration_v1").first()
         with db.engine.begin() as conn:
             if "opening_balance_usd" not in account_cols:
                 conn.exec_driver_sql("ALTER TABLE company_account ADD COLUMN opening_balance_usd NUMERIC(18, 2) NOT NULL DEFAULT 0")
             if "balance_usd" not in account_cols:
                 conn.exec_driver_sql("ALTER TABLE company_account ADD COLUMN balance_usd NUMERIC(18, 2) NOT NULL DEFAULT 0")
-            conn.exec_driver_sql("UPDATE company_account SET opening_balance_usd = opening_balance WHERE UPPER(currency) = 'USD' AND opening_balance_usd = 0 AND opening_balance > 0")
-            conn.exec_driver_sql("UPDATE company_account SET balance_usd = balance WHERE UPPER(currency) = 'USD' AND balance_usd = 0 AND balance > 0")
-            conn.exec_driver_sql("UPDATE company_account SET opening_balance = 0, balance = 0 WHERE UPPER(currency) = 'USD' AND (opening_balance_usd > 0 OR balance_usd > 0)")
+            if not migration_done:
+                conn.exec_driver_sql("UPDATE company_account SET opening_balance_usd = opening_balance WHERE UPPER(currency) = 'USD' AND opening_balance > 0")
+                conn.exec_driver_sql("UPDATE company_account SET balance_usd = balance WHERE UPPER(currency) = 'USD' AND balance > 0")
+                conn.exec_driver_sql("UPDATE company_account SET opening_balance = 0, balance = 0 WHERE UPPER(currency) = 'USD'")
+        if not migration_done:
+            db.session.add(SystemSetting(key="company_account_dual_currency_migration_v1", value="done"))
+            db.session.commit()
     if "material" in inspect(db.engine).get_table_names():
         cols = {c["name"] for c in inspect(db.engine).get_columns("material")}
         if "wholesale_price" not in cols:
