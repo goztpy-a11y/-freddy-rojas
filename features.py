@@ -222,7 +222,7 @@ def proveedores():
                     prices[mid]=str(price)
                 except (InvalidOperation,ValueError):
                     flash("Hay un precio inválido."); return redirect(url_for("proveedores"))
-        _save("proveedores",code+" · "+nombre,{"codigo":code,"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices},0,"Activo")
+        _save("proveedores",code+" · "+nombre,{"codigo":code,"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices,"en_pagos":request.form.get("en_pagos")=="1"},0,"Activo")
         flash("Proveedor registrado con código "+code+" y precios guardados.")
         return redirect(url_for("proveedores"))
     return _page("Proveedores y precios", """
@@ -232,6 +232,7 @@ def proveedores():
     <div><label>RUC / cédula (opcional)</label><input name="cedula"></div>
     <div><label>Teléfono</label><input name="telefono"></div>
     <div><label>Dirección</label><input name="direccion"></div>
+    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1"> Incluir los tickets de este proveedor en Pagos (se puede pagar en fechas diferentes)</label></div>
     <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><p>Ingresá el precio que este proveedor paga por cada material. Cada proveedor conserva sus propios precios; podés dejar vacío el material que no ofrece.</p>
     <div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
     {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" placeholder="Ingresar precio" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales. Registrá primero los materiales.</td></tr>{% endfor %}
@@ -343,7 +344,7 @@ def editar_proveedor(rid):
                 except (InvalidOperation,ValueError):
                     flash("Hay un precio no válido.")
                     return redirect(url_for("editar_proveedor",rid=rid))
-        d.update({"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices})
+        d.update({"nombre":nombre,"cedula":request.form.get("cedula","").strip(),"telefono":request.form.get("telefono","").strip(),"direccion":request.form.get("direccion","").strip(),"precios_materiales":prices,"en_pagos":request.form.get("en_pagos")=="1"})
         rec.title=str(d.get("codigo",""))+" · "+nombre
         rec.data=json.dumps(d,ensure_ascii=False); rec.updated_at=datetime.utcnow()
         log_action("editar proveedor y precios","proveedores",rec.id,nombre)
@@ -353,6 +354,7 @@ def editar_proveedor(rid):
     return _page("Editar proveedor", """
     <section class="card"><h2>Editar proveedor {{d.get('codigo')}}</h2><form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" value="{{d.get('nombre','')}}" required></div><div><label>Cédula (opcional)</label><input name="cedula" value="{{d.get('cedula','')}}"></div><div><label>Teléfono</label><input name="telefono" value="{{d.get('telefono','')}}"></div><div><label>Dirección</label><input name="direccion" value="{{d.get('direccion','')}}"></div>
+    <div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" value="1" {% if d.get('en_pagos',False) %}checked{% endif %}> Incluir los tickets de este proveedor en Pagos (se puede pagar en fechas diferentes)</label></div>
     <div style="grid-column:1/-1"><h3>Precios de este proveedor por material</h3><div style="overflow-x:auto"><table><tr><th>Material</th><th>Precio para este proveedor (Gs.)</th></tr>
     {% for m in mats %}<tr><td>{{m.name}}</td><td><input aria-label="Precio de {{m.name}}" name="precio_{{m.id}}" type="number" min="0" step="0.01" value="{{d.get('precios_materiales',{}).get(m.id|string,'')}}" style="max-width:260px"></td></tr>{% else %}<tr><td colspan="2">Todavía no hay materiales registrados.</td></tr>{% endfor %}
     </table></div></div>
@@ -366,7 +368,7 @@ def movimiento_proveedor(nombre):
     supplier=next((d for r,d in [(x,_data(x)) for x in _rows("proveedores")] if (d.get("nombre") or "").strip().casefold()==nombre.strip().casefold()),None)
     if not supplier: abort(404)
     month=request.args.get("mes",paraguay_now().strftime("%Y-%m"))
-    candidates=_rows("tickets")+_rows("pagos_diarios")+_rows("planillas")
+    candidates=_rows("tickets_entrada")+_rows("tickets")+_rows("pagos_diarios")+_rows("planillas")
     rows=[]
     for rec in candidates:
         d=_data(rec)
@@ -377,7 +379,7 @@ def movimiento_proveedor(nombre):
         rows.append((rec,d))
     material_totals={}
     for rec,d in rows:
-        if rec.module not in ("tickets","pagos_diarios"): continue
+        if rec.module not in ("tickets","tickets_entrada","pagos_diarios"): continue
         for line in (d.get("materiales",[]) or []):
             material=str(line.get("material") or line.get("nombre_material") or "").strip()
             qty=line.get("cantidad",line.get("kg",line.get("quilaje","0")))
@@ -1236,18 +1238,20 @@ def _professional_reports():
             stats_kind="sales"
         if module=="materiales":
             materials=_Material.query.order_by(_Material.name).all()
-            activity_modules=["tickets","ventas","planillas"]
+            activity_modules=["tickets","tickets_entrada","ventas","planillas"]
             cur=_monthly_records(activity_modules,cur_start,cur_end); prev=_monthly_records(activity_modules,prev_start,cur_start)
             for m in materials:
                 def measure(records):
                     count=Decimal("0"); qty=Decimal("0")
                     for rec,d in records:
-                        mid=str(d.get("material_id",""))
-                        name=str(d.get("material","") or d.get("nombre_material",""))
-                        matches=(name.casefold()==m.name.casefold() or mid==str(m.id))
-                        if not matches: continue
-                        count+=1
-                        qty+=Decimal(str(d.get("cantidad",d.get("kg",0)) or 0))
+                        detail_lines=d.get("materiales",[]) if rec.module=="tickets_entrada" else [d]
+                        for line in detail_lines:
+                            mid=str(line.get("material_id",d.get("material_id","")))
+                            name=str(line.get("material","") or line.get("nombre_material","") or d.get("material","") or d.get("nombre_material",""))
+                            matches=(name.casefold()==m.name.casefold() or mid==str(m.id))
+                            if not matches: continue
+                            count+=1
+                            qty+=Decimal(str(line.get("cantidad",line.get("kg",d.get("cantidad",d.get("kg",0)))) or 0))
                     return count,qty
                 cc,cq=measure(cur); pc,pq=measure(prev)
                 trend,trend_class=_delta_label(cq,pq)
@@ -1264,7 +1268,7 @@ def _professional_reports():
                 vendors=sorted(set(vendors),key=lambda x:x.casefold())
             else:
                 vendors=sorted(set(str(_data(r).get("cliente") or _data(r).get("persona") or _data(r).get("proveedor") or "").strip() for r in _rows("tickets")+_rows("planillas") if (_data(r).get("cliente") or _data(r).get("persona") or _data(r).get("proveedor"))),key=lambda x:x.casefold())
-            cur=_monthly_records(["tickets","planillas"],cur_start,cur_end); prev=_monthly_records(["tickets","planillas"],prev_start,cur_start)
+            cur=_monthly_records(["tickets","tickets_entrada","planillas"],cur_start,cur_end); prev=_monthly_records(["tickets","tickets_entrada","planillas"],prev_start,cur_start)
             for name in vendors:
                 cc=sum(1 for r,d in cur if str(d.get("cliente") or d.get("proveedor") or d.get("persona") or "").casefold()==name.casefold())
                 pc=sum(1 for r,d in prev if str(d.get("cliente") or d.get("proveedor") or d.get("persona") or "").casefold()==name.casefold())
