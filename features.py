@@ -24,6 +24,7 @@ MODULES.update({
     "gomeria_inventario": ("Inventario de materiales de gomería", "gomeria", []),
     "gomeria_movimientos": ("Movimientos de inventario de gomería", "gomeria", []),
     "caja_chica": ("Caja chica", "caja", []),
+    "ventas_caja": ("Ventas de Caja", "caja", []),
     "informe_materiales": ("Informe de materiales", "inventario", []),
 })
 
