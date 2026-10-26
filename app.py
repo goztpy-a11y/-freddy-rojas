@@ -902,7 +902,7 @@ def module_page(module):
         for vr in vendor_rows:
             try:
                 vd=json.loads(vr.data or "{}")
-                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{})})
+                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{}),"en_pagos":bool(vd.get("en_pagos",False))})
             except (ValueError,TypeError):
                 continue
         material_prices={m.name:{"id":m.id,"minorista":str(m.price or ""),"mayorista":str(m.wholesale_price or "") if m.wholesale_price is not None else ""} for m in materials}
