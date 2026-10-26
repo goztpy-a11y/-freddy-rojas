@@ -103,16 +103,17 @@ def crear_pago_diario():
     if any(_data(r).get("comprobante","").casefold()==comp.casefold() for r in _rows("pagos_diarios")):
         flash("Comprobante repetido: no se guardó el pago. Usá un número de comprobante distinto.")
         return redirect(url_for("pagos_diarios"))
-    source_ticket=next((r for r in _rows("tickets") if str(_data(r).get("numero_ticket",_data(r).get("nro_ticket",""))).strip().casefold()==ticket.casefold()),None)
+    source_ticket=next((r for source_module in ("tickets","tickets_entrada") for r in _rows(source_module)
+        if str(_data(r).get("numero_ticket",_data(r).get("nro_ticket",_data(r).get("ticket","")))).strip().casefold()==ticket.casefold()),None)
     if source_ticket:
         source_data=_data(source_ticket)
         if "en_pagos" in source_data:
             allowed_in_payments=bool(source_data.get("en_pagos"))
         else:
-            source_vendor=str(source_data.get("cliente","")).strip().casefold()
+            source_vendor=str(source_data.get("cliente",source_data.get("persona",source_data.get("proveedor","")))).strip().casefold()
             allowed_in_payments=any(str(_data(v).get("nombre","")).strip().casefold()==source_vendor and bool(_data(v).get("en_pagos",False)) for v in _rows("proveedores"))
         if not allowed_in_payments:
-            flash("Este ticket está guardado en el historial, pero fue marcado como NO incluir en Pagos. No se registró ningún pago.")
+            flash("Este ticket está guardado en el historial, pero está marcado como NO incluir en Pagos. No se registró ningún pago.")
             return redirect(url_for("pagos_diarios"))
     previous=[r for r in _rows("pagos_diarios") if _data(r).get("ticket","").casefold()==ticket.casefold()]
     paid=sum((Decimal(str(r.amount or 0)) for r in previous),Decimal("0"))
@@ -1276,7 +1277,7 @@ def _professional_reports():
         return render_template_string(BASE+"""
         <style>.report-open{color:#111!important;background:#eef3f8;border-color:#cbd7e5}.report-open:hover{background:#dce6f1}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{padding:9px;border-bottom:1px solid #e1e8f0;text-align:left;vertical-align:top;white-space:normal}</style>
         <section class="card"><h2>Informes por sector</h2><p>Elegí un sector para abrir su informe. Los registros se muestran solamente después de entrar al informe correspondiente.</p>
-        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{% if key in module_keys %}{{url_for('report_module',module=key)}}{% else %}{{url_for('reports',sector=key)}}{% endif %}">Abrir informe</a></p></div>{% endfor %}</div></section>
+        <div class="grid">{% for key,label in available %}<div class="card"><h3>{{label}}</h3><p>Consultar los movimientos guardados de este sector.</p><p><a class="btn report-open" href="{{url_for('reports',sector=key)}}">Abrir informe</a></p></div>{% endfor %}</div></section>
         <section class="card"><h2>{% if sector %}Informe: {{dict(available).get(sector,sector)}}{% elif q or since or until %}Resultados de búsqueda{% else %}Buscar en informes{% endif %}</h2>
         <form method="get" class="grid">
           <div><label>Buscar en los datos de los informes</label><input name="q" value="{{q}}" placeholder="Proveedor, material, camión, ticket, importe..."></div>
