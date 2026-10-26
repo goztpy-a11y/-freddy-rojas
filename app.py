@@ -234,7 +234,7 @@ def allowed(module):
                               "gomeria_inventario", "gomeria_movimientos"}
     if assigned == {"inventario"}:
         return module in inventory_only_modules
-    if module == "cuentas_cobrar" and "caja" in assigned:
+    if module in ("cuentas_cobrar", "cuentas_pagar") and "caja" in assigned:
         return True
     required_area = MODULES.get(module, (None, module))[1]
     return required_area in assigned
@@ -534,7 +534,7 @@ footer{display:block!important;color:#8b99aa}
 <a href="{{url_for('admin_section',section='caja')}}">▣ &nbsp; Caja</a><a href="{{url_for('admin_section',section='estacion')}}">⛽ &nbsp; Estación de servicio</a><a href="{{url_for('admin_section',section='gomeria')}}">⚙ &nbsp; Gomería</a><a href="{{url_for('admin_section',section='inventario')}}">▤ &nbsp; Inventario</a><a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('admin_section',section='auditoria')}}">✓ &nbsp; Auditoría</a><a href="{{url_for('admin_section',section='administracion')}}">⚙ &nbsp; Administración</a><a href="{{url_for('registrar_ticket')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a>
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
-{% if allowed('caja') %}<a href="{{url_for('module_page',module='tickets')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('module_page',module='cuentas_cobrar')}}">Cuentas por cobrar</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
+{% if allowed('caja') %}<a href="{{url_for('module_page',module='tickets')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('module_page',module='cuentas_cobrar')}}">Cuentas por cobrar</a><a href="{{url_for('module_page',module='cuentas_pagar')}}">Cuentas por pagar</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a>{% endif %}
 {% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('servicios_gomeria')}}">Servicio de gomería</a><a href="{{url_for('gomeria_inventario')}}">Inventario de materiales</a><a href="{{url_for('gomeria_movimientos')}}">Movimientos de materiales</a>{% endif %}
