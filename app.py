@@ -619,7 +619,13 @@ def index():
     visible_modules = [key for key in MODULES if allowed(key) and key != "cobros_cuentas"]
     today_start = paraguay_now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = Record.query.filter(Record.module.in_(visible_modules), Record.created_at >= today_start).count() if visible_modules else 0
-    records = Record.query.filter(Record.module.in_(visible_modules), Record.module != "caja_chica").order_by(Record.created_at.desc()).limit(8).all() if u.role == "admin" and visible_modules else []
+    records = Record.query.filter(Record.module.in_(visible_modules)).order_by(Record.created_at.desc()).all() if u.role == "admin" and visible_modules else []
+    if u.role == "admin":
+        # El panel del administrador también refleja ingresos de ventas y otros movimientos de caja chica.
+        records = [r for r in records if r.module != "caja_chica" or
+                   (json.loads(r.data or "{}").get("tipo") == "gasto" or
+                    json.loads(r.data or "{}").get("origen") in ("venta_caja", "transferencia_bancaria") or
+                    json.loads(r.data or "{}").get("clasificacion") == "ingreso_venta")][:8]
     pending = Record.query.filter_by(module="solicitudes",status="Pendiente de autorización").count() if (u.role == "admin" or allowed("tesoreria")) else 0
     accounts = CompanyAccount.query.filter_by(active=True).all() if u.role == "admin" else []
     material_count = Material.query.count() if u.role == "admin" or allowed("inventario") else None
@@ -1771,14 +1777,12 @@ def auditoria_informes():
     q=request.args.get("q","").strip().casefold()
     since=request.args.get("desde","")
     until=request.args.get("hasta","")
-    financial_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","cobros_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","planillas","cheques"}
+    financial_modules={"pagos_diarios","gastos","caja_chica","pagos_cuentas","cobros_cuentas","prestamos_pagos","fletes","gomeria_servicios","combustible_camion","mantenimiento","tickets","tickets_entrada","ventas_caja","planillas","cheques"}
     rows=[]
     for rec in Record.query.filter(Record.module.in_(financial_modules)).order_by(Record.created_at.desc()).all():
         data={}
         try: data=json.loads(rec.data or "{}")
         except Exception: pass
-        if rec.module=="caja_chica" and data.get("tipo")!="gasto":
-            continue
         dt=local_time(rec.created_at)
         hay=(rec.title+" "+rec.module+" "+rec.status+" "+str(rec.amount)+" "+rec.data).casefold()
         if q and q not in hay: continue
