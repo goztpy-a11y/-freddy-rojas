@@ -79,6 +79,7 @@ MODULES = {
   ("cliente","Cliente","text",True),("numero_ticket","Número de ticket","text",True),
   ("material","Material descargado","text",True),("cantidad_kg","Kilogramos","number",True),
   ("precio_kg","Precio por kilogramo","number",True),
+  ("importe_total","Importe total editable","number",False),
   ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Fecha estimada de cobro (opcional)","date",False)]),
@@ -710,6 +711,7 @@ def admin_section(section):
             abort(403)
     groups = {
       "caja": ("Caja", "OPERACIONES FINANCIERAS", "Pagos, proveedores y movimientos diarios.", [
+        ("Registrar venta", url_for("ventas_caja"), "Registrar venta y actualizar caja chica o cuenta bancaria"),
         ("Pagos diarios", url_for("pagos_diarios"), "Pagos y comprobantes"),
         ("Salida de material", url_for("salida_material"), "Registrar camión, chofer, fecha, material y kg"),
         ("Préstamos", url_for("prestamos"), "Registro y seguimiento"),
@@ -1328,8 +1330,8 @@ def module_page(module):
         <div><label>N.º de factura (opcional)</label><input name="factura"></div>
         <div><label>Fecha de factura (opcional)</label><input name="fecha_factura" type="date"></div>
         <div><label>Fecha estimada de cobro (opcional)</label><input name="vencimiento" type="date"></div>
-        <div style="grid-column:1/-1;background:#f5f8fc;padding:14px;border-radius:10px"><label>Monto total por cobrar</label><input id="receivable-total" readonly value="0"><small>El sistema calcula kilogramos × precio por kilogramo. El ticket queda pendiente hasta registrar el dinero recibido.</small></div>
-        <script>function updateReceivableTotal(){const q=Number(document.getElementById('receivable-kg').value)||0,p=Number(document.getElementById('receivable-price').value)||0,c=document.getElementById('receivable-currency').value;const total=q*p;document.getElementById('receivable-total').value=(c==='PYG'?'Gs. ':'$ ')+total.toLocaleString(c==='PYG'?'es-PY':'en-US',{maximumFractionDigits:2,minimumFractionDigits:c==='USD'?2:0});}document.getElementById('receivable-kg').addEventListener('input',updateReceivableTotal);document.getElementById('receivable-price').addEventListener('input',updateReceivableTotal);</script>
+        <div style="grid-column:1/-1;background:#f5f8fc;padding:14px;border-radius:10px"><label>Importe total por cobrar (editable)</label><input name="importe_total" id="receivable-total" type="number" min="0.01" step="0.01" required placeholder="Se calcula con kg × precio; podés modificarlo"><small>El importe se calcula automáticamente, pero podés escribir otro monto antes de guardar.</small></div>
+        <script>let receivableManual=false;function updateReceivableTotal(){const q=Number(document.getElementById('receivable-kg').value)||0,p=Number(document.getElementById('receivable-price').value)||0,field=document.getElementById('receivable-total');if(!receivableManual){field.value=(q*p).toFixed(2);}}document.getElementById('receivable-total').addEventListener('input',()=>{receivableManual=true;});document.getElementById('receivable-kg').addEventListener('input',()=>{receivableManual=false;updateReceivableTotal();});document.getElementById('receivable-price').addEventListener('input',()=>{receivableManual=false;updateReceivableTotal();});</script>
         {% else %}
         {% for key,label,kind,req in fields %}<div><label>{{label}}</label>
         {% if kind=='checkbox' %}<label><input type="checkbox" name="{{key}}" value="Sí" style="width:auto"> {{'Clasificar esta obligación también como gasto' if key=='es_gasto' else 'Incluye cheque adelantado'}}</label>
@@ -1366,6 +1368,16 @@ def module_page(module):
                 try: amount=Decimal(data[k].replace(",","."))
                 except InvalidOperation: amount=Decimal("0")
                 break
+        if module == "cuentas_cobrar":
+            try:
+                manual_total=(data.get("importe_total") or "").strip()
+                calculated=(Decimal(data.get("cantidad_kg","0").replace(",", "."))*Decimal(data.get("precio_kg","0").replace(",", "."))).quantize(Decimal("0.01"))
+                amount=Decimal(manual_total.replace(",", ".")).quantize(Decimal("0.01")) if manual_total else calculated
+                if amount<=0: raise InvalidOperation()
+                data["importe_total"]=str(amount)
+            except (InvalidOperation,ValueError,TypeError):
+                flash("Ingresá un importe total válido mayor que cero.")
+                return redirect(url_for("module_page",module=module))
         status = "Registrado"
         if module == "solicitudes": status = "Pendiente de autorización"
         if module == "tickets":
