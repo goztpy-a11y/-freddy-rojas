@@ -1285,10 +1285,6 @@ def _professional_reports():
           <div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div>
           <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('reports')}}">Volver a sectores</a></div>
         </form>
-        <p><b>Registros encontrados: {{results|length}}</b> <button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
-        <div style="overflow-x:auto"><table class="report-table"><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Proveedor / concepto</th><th>Estado</th><th>Monto</th><th>Acciones</th></tr>
-        {% for row in results %}<tr><td>{{row.when.strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{row.label}}</td><td>{{row.rec.title}}</td><td>{{row.concept}}</td><td>{{row.rec.status}}</td><td>{{row.rec.amount}}</td><td><a class="btn" href="{{url_for('view_record',rid=row.rec.id)}}">Ver detalle</a> <a class="btn" href="{{url_for('print_record',rid=row.rec.id)}}">Imprimir</a></td></tr>
-        {% else %}<tr><td colspan="7">No se encontraron registros con estos filtros.</td></tr>{% endfor %}</table></div></section>
         {% if sector or q or since or until %}
         <p><b>Registros encontrados: {{results|length}}</b> <button class="btn" type="button" onclick="window.print()">Imprimir informe</button></p>
         <div style="overflow-x:auto"><table class="report-table"><tr><th>Fecha y hora</th><th>Sector</th><th>Operación</th><th>Proveedor / concepto</th><th>Estado</th><th>Monto</th><th>Acciones</th></tr>
