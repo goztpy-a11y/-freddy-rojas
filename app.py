@@ -902,7 +902,7 @@ def module_page(module):
         for vr in vendor_rows:
             try:
                 vd=json.loads(vr.data or "{}")
-                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{})})
+                vendor_prices.append({"codigo":str(vd.get("codigo","")),"nombre":str(vd.get("nombre","")),"precios":vd.get("precios_materiales",{}),"en_pagos":bool(vd.get("en_pagos",False))})
             except (ValueError,TypeError):
                 continue
         material_prices={m.name:{"id":m.id,"minorista":str(m.price or ""),"mayorista":str(m.wholesale_price or "") if m.wholesale_price is not None else ""} for m in materials}
@@ -947,7 +947,7 @@ def module_page(module):
                     flash("Revisá la cantidad y el precio de cada material."); return redirect(url_for("module_page",module=module))
             if not lines:
                 flash("Agregá al menos un material."); return redirect(url_for("module_page",module=module))
-            data={"numero_ticket":numero_ticket,"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"total":str(total)}
+            data={"numero_ticket":numero_ticket,"cliente":client,"materiales":lines,"cuenta_cliente":request.form.get("cuenta_cliente","").strip(),"observaciones":request.form.get("observaciones","").strip(),"destino_pago":request.form.get("destino_pago","materiales").strip(),"en_pagos":request.form.get("en_pagos")=="1","total":str(total)}
             rec=Record(module="tickets",title=client,data=json.dumps(data,ensure_ascii=False),amount=total,status="Pendiente de pago",created_by=current_user().id)
             db.session.add(rec); db.session.flush()
             # Cada carga registrada en Caja aumenta automáticamente el inventario por material.
@@ -977,23 +977,26 @@ def module_page(module):
         <div style="position:relative"><label>Proveedor / código</label><input name="cliente" id="ticket-client" autocomplete="off" placeholder="Escribí el nombre o código" required>
         <div id="ticket-vendor-suggestions" class="card" style="display:none;position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;padding:4px;margin:0"></div><small>Escribí algunas letras y elegí el proveedor de la lista.</small></div>
         <div><label>N.º de ticket <span style="color:#c00">*</span></label><input name="numero_ticket" type="text" autocomplete="off" placeholder="Ingresá el número de ticket" required></div>
-        <div><label>Cuenta bancaria del proveedor (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div></div>
+        <div><label>Cuenta bancaria del proveedor (opcional)</label><input name="cuenta_cliente"></div><div><label>Observaciones</label><input name="observaciones"></div><div><label>Destino del registro</label><select name="destino_pago" required><option value="materiales">Pago de materiales</option><option value="gastos">Gastos</option></select></div><div style="grid-column:1/-1"><label><input type="checkbox" name="en_pagos" id="ticket-en-pagos" value="1" checked> Incluir esta carga en Pagos</label><small>Si no se marca, la carga igual queda guardada y suma al registro y a la deuda del proveedor, pero no debe enviarse a Pagos.</small></div></div>
         <h3>Materiales de la carga</h3><div id="ticket-lines"><div class="grid ticket-line"><div><label>Material</label><select name="material" required><option value="">Seleccionar material</option>{% for m in materials %}<option value="{{m.name}}">{{m.name}}</option>{% endfor %}</select></div><div><label>Cantidad / kg</label><input name="cantidad" type="number" min="0.001" step="0.001" required></div><div><label>Precio por kg (Gs.)</label><input name="precio" type="number" min="0" step="0.01" placeholder="Precio guardado o ingresá uno manualmente"></div><div><label>Monto a pagar por este material (Gs.)</label><input class="line-total" readonly></div></div></div>
         <p><button type="button" class="btn" onclick="addTicketLine()">+ Agregar material</button></p><div class="card" style="background:#f5f8fc;margin-top:14px"><label>Total a cobrar (Gs.)</label><input id="ticket-grand-total" readonly value="0"></div><button class="btn">Guardar carga</button></form></section>
         <section class="card"><h2>Historial de tickets</h2><form method="get" class="actions"><input name="q" placeholder="Buscar proveedor, material, monto..." value="{{q}}"><button class="btn">Buscar</button><a class="btn" href="{{url_for('module_page',module='tickets')}}">Limpiar</a></form><p><button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
-        <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
+        <table><tr><th>Fecha/hora</th><th>Proveedor</th><th>Materiales</th><th>Destino</th><th>En Pagos</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>{% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for line in d.get('materiales',[]) %}{{line.material}} · {{line.cantidad}} · {{line.total}}<br>{% endfor %}</td><td>{{'Gastos' if d.get('destino_pago')=='gastos' else 'Pago de materiales'}}</td><td>{{'Sí' if d.get('en_pagos',False) else 'No'}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir ticket</a></td></tr>{% endfor %}</table></section>
         <script>
         const ticketVendors={{vendor_prices|tojson}}, ticketMaterials={{material_prices|tojson}};
         const clientField=document.getElementById('ticket-client'), suggestions=document.getElementById('ticket-vendor-suggestions');
         let selectedVendorKey='';
         function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
         function selectedVendor(){const s=norm(clientField.value);return ticketVendors.find(v=>norm(v.nombre)===s||norm(v.codigo)===s);}
+        const includePayments=document.getElementById("ticket-en-pagos");
+        function syncPaymentFlag(){const v=selectedVendor();includePayments.checked=!!(v&&v.en_pagos);}
+        includePayments.checked=false;
         function showVendorMatches(){
           const q=norm(clientField.value);suggestions.replaceChildren();
           if(!q){suggestions.style.display='none';return;}
           const matches=ticketVendors.filter(v=>norm(v.nombre).includes(q)||norm(v.codigo).includes(q)).slice(0,12);
           if(!matches.length){suggestions.style.display='none';return;}
-          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
+          matches.forEach(v=>{const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.setAttribute('role','option');btn.style.cssText='display:block;width:100%;text-align:left;margin:2px 0;touch-action:manipulation;pointer-events:auto';btn.textContent=v.nombre+' · '+v.codigo;const choose=()=>{clientField.value=v.nombre;selectedVendorKey=norm(v.codigo||v.nombre);suggestions.style.display='none';updatePrices(true);syncPaymentFlag();clientField.dispatchEvent(new Event('change',{bubbles:true}));};btn.addEventListener('pointerdown',e=>{e.preventDefault();choose();});btn.addEventListener('click',e=>{e.preventDefault();choose();});suggestions.appendChild(btn);});
           suggestions.style.display='block';
         }
         function updatePrices(force=false, changedRow=null){
@@ -1023,7 +1026,7 @@ def module_page(module):
           row.querySelector('[name="material"]').required=false;row.querySelector('[name="cantidad"]').required=false;root.appendChild(row);updateGrandTotal();
         }
         clientField.addEventListener('input',showVendorMatches);
-        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);});
+        clientField.addEventListener('change',()=>{suggestions.style.display='none';updatePrices(true);syncPaymentFlag();});
         // No cerrar en blur: en móviles el toque puede quitar el foco antes del click de la sugerencia.
         // El menú se cierra al seleccionar un proveedor o al tocar fuera del listado.
         document.addEventListener('click',e=>{if(!suggestions.contains(e.target)&&e.target!==clientField)suggestions.style.display='none';});
