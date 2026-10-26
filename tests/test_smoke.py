@@ -80,6 +80,52 @@ class SmokeTests(unittest.TestCase):
             original = db.session.get(Record, rid)
             self.assertEqual(original.status, "En proceso")
 
+    def test_multiple_company_accounts_have_separate_currency_balances(self):
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta de prueba", "banco": "Banco", "numero": "001",
+            "saldo_inicial_pyg": "100000", "saldo_inicial_usd": "50"
+        })
+        with app.app_context():
+            account = CompanyAccount.query.filter_by(name="Cuenta de prueba").first()
+            self.assertIsNotNone(account)
+            self.assertEqual(str(account.balance), "100000.00")
+            self.assertEqual(str(account.balance_usd), "50.00")
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Segunda cuenta", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            self.assertEqual(CompanyAccount.query.count(), 2)
+
+    def test_usd_receivable_collection_credits_selected_account(self):
+        from app import Record
+        self.client.post("/modulo/cuentas_empresa", data={
+            "nombre": "Cuenta cobros", "saldo_inicial_pyg": "0", "saldo_inicial_usd": "0"
+        })
+        with app.app_context():
+            account_id = CompanyAccount.query.filter_by(name="Cuenta cobros").first().id
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "cliente": "Cliente USD", "concepto": "Factura exportación",
+            "importe": "100", "moneda": "USD", "tipo_cambio": "7300",
+            "factura": "F-001", "fecha_factura": "2026-10-25",
+            "vencimiento": "", "estado": "Pendiente"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            rid = Record.query.filter_by(module="cuentas_cobrar").first().id
+        response = self.client.post("/modulo/cuentas_cobrar", data={
+            "accion": "pago", "registro_id": str(rid), "importe": "40",
+            "fecha": "2026-10-26", "medio": "Transferencia", "detalle": "Cobro parcial",
+            "company_account_id": str(account_id), "tipo_cambio": "7300"
+        })
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            account = db.session.get(CompanyAccount, account_id)
+            self.assertEqual(str(account.balance_usd), "40.00")
+            self.assertEqual(str(account.balance), "0.00")
+            payment = Record.query.filter_by(module="cobros_cuentas").first()
+            self.assertEqual(payment.company_account_id, account_id)
+            self.assertIn('"importe_pyg": "292000.00"', payment.data)
+
     def test_expense_with_multiple_items(self):
         with app.app_context():
             account = CompanyAccount(name="", bank="", number="", currency="PYG",
