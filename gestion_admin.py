@@ -161,7 +161,21 @@ def admin_clientes():
     # Sincronizar una sola vez cada ticket oculto en la deuda del proveedor.
     # Se guarda el ID procesado en el registro de administración para no duplicarlo
     # al volver a abrir la pantalla. Los pagos previos vinculados al ticket se restan.
-    tickets_hidden = _rs("tickets")
+    # Los tickets nuevos de "Registrar ticket" se guardan en tickets_entrada;
+    # conservar también tickets legacy y evitar duplicados por proveedor + número.
+    tickets_hidden = _rs("tickets") + _rs("tickets_entrada")
+    unique_tickets = []
+    seen_ticket_keys = set()
+    for ticket_record in tickets_hidden:
+        ticket_data = _d(ticket_record)
+        ticket_supplier = str(ticket_data.get("cliente") or ticket_data.get("persona") or ticket_data.get("proveedor") or "").strip().casefold()
+        ticket_number = str(ticket_data.get("numero_ticket") or ticket_data.get("nro_ticket") or ticket_data.get("ticket") or "").strip().casefold()
+        key = (ticket_supplier, ticket_number) if ticket_number else (ticket_supplier, "record:" + str(ticket_record.id))
+        if key in seen_ticket_keys:
+            continue
+        seen_ticket_keys.add(key)
+        unique_tickets.append(ticket_record)
+    tickets_hidden = unique_tickets
     ticket_payments = _rs("pagos_diarios")
     changed_debts = False
     for selected_record, supplier_data in selected:
@@ -237,7 +251,7 @@ def admin_clientes():
     <section class="card"><h2>Proveedores administrados y deudas</h2><div style="overflow-x:auto"><table>
       <tr><th>Proveedor</th><th>Kg ingresados</th><th>Deuda actual (Gs.)</th><th>Actualizar deuda manual</th><th>Registrar pago</th></tr>
       {% for r,d in selected %}<tr><td><b>{{d.get('nombre',r.title)}}</b><br><span class="muted">{{d.get('codigo','')}}</span></td>
-      <td>{{kg_by_name.get(d.get('nombre','').casefold(),0)}}</td><td><b>Gs. {{d.get('deuda_actual','0')}}</b></td>
+      <td>{{kg_by_name.get(str(d.get('nombre','')).strip().casefold(),0)}}</td><td><b>Gs. {{d.get('deuda_actual','0')}}</b></td>
       <td><form method="post" class="actions"><input type="hidden" name="accion" value="deuda"><input type="hidden" name="seleccion_id" value="{{r.id}}"><input name="deuda" type="number" min="0" step="0.01" value="{{d.get('deuda_actual','0')}}" required><button>Guardar deuda</button></form></td>
       <td><form method="post" class="grid" style="min-width:260px"><input type="hidden" name="accion" value="pagar"><input type="hidden" name="seleccion_id" value="{{r.id}}">
       <div><label>Importe a pagar (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" max="{{d.get('deuda_actual','0')}}" required></div>
