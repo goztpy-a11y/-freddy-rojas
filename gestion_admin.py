@@ -219,15 +219,20 @@ def admin_clientes():
         pd = _d(p)
         payments_by_id.setdefault(str(pd.get("seleccion_id")), []).append((p, pd))
     kg_by_name = {}
-    for module in ("tickets", "tickets_entrada", "pagos_diarios", "planillas", "ventas", "flota"):
+    # Los kg ingresados del proveedor salen únicamente de tickets de carga.
+    # Los préstamos y sus pagos se conservan en sus historiales, pero nunca
+    # participan en los totales de kg ni en la deuda de proveedores.
+    for module in ("tickets", "tickets_entrada"):
+        if module in ("prestamos", "prestamos_pagos"):
+            continue
         for r in _rs(module):
             x = _d(r)
-            name = str(x.get("cliente") or x.get("persona") or x.get("proveedor") or x.get("nombre") or x.get("camion") or "").strip().casefold()
+            name = str(x.get("cliente") or x.get("persona") or x.get("proveedor") or "").strip().casefold()
             if not name:
                 continue
             try:
                 # Los tickets guardan los kg dentro de "materiales", no en la raíz.
-                # Sumar todas las líneas independientemente de su visibilidad en Pagos.
+                # Sumar todas las líneas aunque el ticket esté oculto en Pagos.
                 lines = x.get("materiales") if isinstance(x.get("materiales"), list) else []
                 if lines:
                     kg = sum((Decimal(str(line.get("cantidad", line.get("kg", line.get("cantidad_kg", 0))) or 0).replace(",", "."))
