@@ -160,17 +160,13 @@ def prestamos():
                 provider=d.get("proveedor") or d.get("entidad","")
                 loan_payment_data={"prestamo_id":loan_id,"cliente":d.get("cliente"),"entidad":d.get("entidad"),"proveedor":provider,"fecha":payment_date,"importe":str(amount),"aplicado":str(applied),"excedente_credito":str(excess),"medio":payment_method,"cuota":request.form.get("cuota",""),"observaciones":detail}
                 loan_payment=Record(module="prestamos_pagos",title="Pago préstamo "+str(loan_id),data=json.dumps(loan_payment_data,ensure_ascii=False),amount=amount,status="Pagado",created_by=current_user().id)
-                report_data={"modulo_origen":"prestamos_pagos","registro_id":loan_id,"pago_prestamo_id":None,"fecha":payment_date,"beneficiario":d.get("entidad",""),"concepto":"Pago de préstamo #"+str(loan_id)+" · "+str(d.get("cliente","")),"cliente":d.get("cliente",""),"entidad":d.get("entidad",""),"importe":str(amount),"medio":payment_method,"detalle":detail,"cuota":request.form.get("cuota","")}
-                report_payment=Record(module="pagos_cuentas",title="Pago préstamo · "+str(d.get("entidad",""))+" · "+str(d.get("cliente","")),data=json.dumps(report_data,ensure_ascii=False),amount=amount,status="Pagado",created_by=current_user().id)
+                # Los pagos de préstamos se registran únicamente en su propio historial.
+                # No crear un movimiento en pagos_cuentas: ese módulo representa movimientos bancarios.
                 db.session.add(loan_payment)
-                db.session.add(report_payment)
                 db.session.flush()
-                report_data["pago_prestamo_id"]=loan_payment.id
-                report_payment.data=json.dumps(report_data,ensure_ascii=False)
-                log_action("registrar pago de préstamo","prestamos_pagos",loan_payment.id,loan_payment.title+"; importe "+str(amount))
-                log_action("registrar pago en informe general","pagos_cuentas",report_payment.id,report_payment.title+"; importe "+str(amount))
+                log_action("registrar pago de préstamo","prestamos_pagos",loan_payment.id,loan_payment.title+"; importe "+str(amount)+"; sin afectar cuenta bancaria")
                 db.session.commit()
-                flash("Pago del préstamo registrado y agregado al Informe de pagos.")
+                flash("Pago del préstamo registrado. La cuenta bancaria principal no fue modificada.")
             except (ValueError,InvalidOperation):
                 flash("No se pudo registrar el pago: verificá el préstamo y el saldo.")
             return redirect(url_for("prestamos"))
