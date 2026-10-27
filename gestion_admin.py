@@ -163,7 +163,7 @@ def admin_clientes():
     # al volver a abrir la pantalla. Los pagos previos vinculados al ticket se restan.
     # Los tickets nuevos de "Registrar ticket" se guardan en tickets_entrada;
     # conservar también tickets legacy y evitar duplicados por proveedor + número.
-    tickets_hidden = _rs("tickets") + _rs("tickets_entrada")
+    tickets_hidden = _rs("tickets_entrada") + _rs("tickets")
     unique_tickets = []
     seen_ticket_keys = set()
     for ticket_record in tickets_hidden:
