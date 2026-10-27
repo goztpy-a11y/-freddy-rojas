@@ -219,20 +219,21 @@ def admin_clientes():
         pd = _d(p)
         payments_by_id.setdefault(str(pd.get("seleccion_id")), []).append((p, pd))
     kg_by_name = {}
-    # Los kg ingresados del proveedor salen únicamente de tickets de carga.
-    # Los préstamos y sus pagos se conservan en sus historiales, pero nunca
-    # participan en los totales de kg ni en la deuda de proveedores.
-    for module in ("tickets", "tickets_entrada"):
-        if module in ("prestamos", "prestamos_pagos"):
-            continue
+    # Contar tickets visibles y ocultos, sin duplicar un mismo ticket entre historiales.
+    # Priorizar tickets_entrada, que es el origen de Registrar ticket.
+    seen_kg_ticket_keys = set()
+    for module in ("tickets_entrada", "tickets"):
         for r in _rs(module):
             x = _d(r)
             name = str(x.get("cliente") or x.get("persona") or x.get("proveedor") or "").strip().casefold()
             if not name:
                 continue
+            number = str(x.get("numero_ticket") or x.get("nro_ticket") or x.get("ticket") or "").strip().casefold()
+            key = (name, number) if number else (name, "record:" + str(r.id))
+            if key in seen_kg_ticket_keys:
+                continue
+            seen_kg_ticket_keys.add(key)
             try:
-                # Los tickets guardan los kg dentro de "materiales", no en la raíz.
-                # Sumar todas las líneas aunque el ticket esté oculto en Pagos.
                 lines = x.get("materiales") if isinstance(x.get("materiales"), list) else []
                 if lines:
                     kg = sum((Decimal(str(line.get("cantidad", line.get("kg", line.get("cantidad_kg", 0))) or 0).replace(",", "."))
