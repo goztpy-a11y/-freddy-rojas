@@ -251,7 +251,7 @@ def admin_clientes():
     <section class="card"><h2>Proveedores administrados y deudas</h2><div style="overflow-x:auto"><table>
       <tr><th>Proveedor</th><th>Kg ingresados</th><th>Deuda actual (Gs.)</th><th>Actualizar deuda manual</th><th>Registrar pago</th></tr>
       {% for r,d in selected %}<tr><td><b>{{d.get('nombre',r.title)}}</b><br><span class="muted">{{d.get('codigo','')}}</span></td>
-      <td>{{kg_by_name.get(str(d.get('nombre','')).strip().casefold(),0)}}</td><td><b>Gs. {{d.get('deuda_actual','0')}}</b></td>
+      <td>{{kg_by_name.get(d.get('nombre','').strip().casefold(),0)}}</td><td><b>Gs. {{d.get('deuda_actual','0')}}</b></td>
       <td><form method="post" class="actions"><input type="hidden" name="accion" value="deuda"><input type="hidden" name="seleccion_id" value="{{r.id}}"><input name="deuda" type="number" min="0" step="0.01" value="{{d.get('deuda_actual','0')}}" required><button>Guardar deuda</button></form></td>
       <td><form method="post" class="grid" style="min-width:260px"><input type="hidden" name="accion" value="pagar"><input type="hidden" name="seleccion_id" value="{{r.id}}">
       <div><label>Importe a pagar (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" max="{{d.get('deuda_actual','0')}}" required></div>
