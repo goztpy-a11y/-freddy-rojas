@@ -177,7 +177,7 @@ def prestamos():
         try:
             cliente=request.form.get("cliente","").strip(); entidad=request.form.get("entidad","").strip()
             monto=Decimal(request.form.get("monto","").replace(",",".")); plazo=int(request.form.get("plazo","12"))
-            if not cliente or not entidad or monto<=0 or plazo<1 or plazo>12: raise InvalidOperation()
+            if not cliente or monto<=0 or plazo<1 or plazo>12: raise InvalidOperation()
             existing_loans=_rows("prestamos")
             max_number=0
             for old_loan in existing_loans:
@@ -188,7 +188,7 @@ def prestamos():
                 else:
                     max_number=max(max_number,old_loan.id)
             number="PR-"+str(max_number+1).zfill(4)
-            _save("prestamos","Préstamo "+number+" · "+entidad,{"numero_prestamo":number,"cliente":cliente,"entidad":entidad,"proveedor":entidad,"fecha":request.form.get("fecha",""),"monto":str(monto),"plazo_meses":plazo,"modalidad":request.form.get("modalidad","Efectivo"),"vencimiento":request.form.get("vencimiento",""),"observaciones":request.form.get("observaciones","")},monto,"Pendiente")
+            _save("prestamos","Préstamo "+number+" · "+(entidad or "Sin proveedor")+" · "+cliente,{"numero_prestamo":number,"cliente":cliente,"entidad":entidad,"proveedor":entidad,"fecha":request.form.get("fecha",""),"monto":str(monto),"plazo_meses":plazo,"modalidad":request.form.get("modalidad","Efectivo"),"vencimiento":request.form.get("vencimiento",""),"observaciones":request.form.get("observaciones","")},monto,"Pendiente")
             flash("Préstamo registrado con número "+number+".")
         except (ValueError,InvalidOperation):
             flash("Revisá los datos del préstamo; el plazo permitido es de 1 a 12 meses.")
@@ -201,7 +201,7 @@ def prestamos():
     providers=[_data(v).get("nombre","") for v in _rows("proveedores") if _data(v).get("nombre")]
     return _page("Préstamos", """
     <section class="card"><h2>Registrar préstamo</h2><form method="post" class="grid">
-    <div><label>Proveedor que recibe el préstamo</label><select name="entidad" required><option value="">Seleccionar proveedor</option>{% for v in providers %}<option value="{{v}}">{{v}}</option>{% endfor %}</select></div><div><label>Persona responsable / referencia</label><input name="cliente" required></div>
+    <div><label>Proveedor que recibe el préstamo (opcional)</label><input name="entidad" list="prestamo-proveedores" placeholder="Elegí un proveedor o escribí otro nombre" autocomplete="off"><datalist id="prestamo-proveedores">{% for v in providers %}<option value="{{v}}"></option>{% endfor %}</datalist></div><div><label>Persona responsable / referencia</label><input name="cliente" required></div>
     <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Monto (Gs.)</label><input name="monto" type="number" min="0.01" step="0.01" required></div>
     <div><label>Plazo (máximo 12 meses)</label><input name="plazo" type="number" min="1" max="12" value="12" required></div>
     <div><label>Modalidad de pago</label><select name="modalidad"><option>Efectivo</option><option>Automático</option></select></div>
