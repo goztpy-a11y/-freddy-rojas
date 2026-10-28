@@ -368,14 +368,14 @@ def listado_proveedores():
     {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td><b>{{d.get('_kg_total',0)}}</b> kg</td><td><b>Gs. {{d.get('_monto_deuda',0)}}</b></td>
     <td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}{% if not d.get('precios_materiales') %}—{% endif %}</td>
     <td><a class="btn" href="{{url_for('movimiento_proveedor',nombre=d.get('nombre'))}}">Ver movimientos</a></td>
-    <td>{% if user.role=='admin' %}<a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="11">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
+    <td><a class="btn" href="{{url_for('editar_proveedor',rid=r.id)}}">Editar proveedor y precios</a></td></tr>{% else %}<tr><td colspan="11">Todavía no hay proveedores registrados.</td></tr>{% endfor %}</table></div></section>
     """,items=items,mats=mats,last=last)
 
 
 @app.route("/proveedores/<int:rid>/editar",methods=["GET","POST"])
 @login_required
 def editar_proveedor(rid):
-    if current_user().role!="admin": abort(403)
+    _can_caja()
     rec=db.get_or_404(Record,rid)
     if rec.module!="proveedores": abort(404)
     d=_data(rec)
