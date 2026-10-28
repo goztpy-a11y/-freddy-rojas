@@ -256,7 +256,7 @@ def proveedores():
         flash("Proveedor registrado con código "+code+" y precios guardados.")
         return redirect(url_for("proveedores"))
     return _page("Proveedores y precios", """
-    <section class="card"><h2>Registrar proveedor y precios por material</h2>
+    <section class="card"><div class="actions" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h2>Registrar proveedor y precios por material</h2><a class="btn" href="{{url_for('listado_proveedores')}}">Administrar proveedores</a></div>
     <form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" required></div>
     <div><label>RUC / cédula (opcional)</label><input name="cedula"></div>
@@ -363,7 +363,7 @@ def listado_proveedores():
         vd["_monto_deuda"]=max(Decimal("0"),entry["monto"]-entry["pagado"]).quantize(Decimal("0.01"))
     last={d.get("nombre"):max([local_time(x.created_at).strftime("%d/%m/%Y %H:%M") for x in _rows("tickets")+_rows("pagos_diarios")+_rows("planillas") if d.get("nombre","").casefold() in (x.title+" "+x.data).casefold()] or ["Sin movimientos"]) for r,d in items}
     return _page("Proveedores", """
-    <section class="card"><h2>Listado de proveedores</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
+    <section class="card"><h2>Administrar proveedores</h2><p>Listado de todos los proveedores registrados. Desde aquí podés editar los datos y el precio de cada material sin borrar el historial de cargas, kilos, pagos ni deudas.</p><p><a class="btn" href="{{url_for('proveedores')}}">Volver a Agregar proveedor</a> <button class="btn" type="button" onclick="window.print()">Imprimir listado</button></p>
     <div style="overflow-x:auto"><table><tr><th>Código</th><th>Proveedor</th><th>RUC / cédula</th><th>Teléfono</th><th>Dirección</th><th>Última actividad</th><th>Kg registrados</th><th>Monto adeudado (Gs.)</th><th>Precios por material</th><th>Movimiento mensual</th><th>Editar</th></tr>
     {% for r,d in items %}<tr><td>{{d.get('codigo')}}</td><td>{{d.get('nombre')}}</td><td>{{d.get('cedula') or '—'}}</td><td>{{d.get('telefono') or '—'}}</td><td>{{d.get('direccion') or '—'}}</td><td>{{last.get(d.get('nombre'),'Sin movimientos')}}</td><td><b>{{d.get('_kg_total',0)}}</b> kg</td><td><b>Gs. {{d.get('_monto_deuda',0)}}</b></td>
     <td>{% for mid,price in d.get('precios_materiales',{}).items() %}{% for m in mats %}{% if mid==m.id|string %}{{m.name}}: {{price}}<br>{% endif %}{% endfor %}{% endfor %}{% if not d.get('precios_materiales') %}—{% endif %}</td>
@@ -402,7 +402,7 @@ def editar_proveedor(rid):
         log_action("editar proveedor y precios","proveedores",rec.id,nombre)
         db.session.commit()
         flash("Proveedor y precios actualizados.")
-        return redirect(url_for("proveedores"))
+        return redirect(url_for("listado_proveedores"))
     return _page("Editar proveedor", """
     <section class="card"><h2>Editar proveedor {{d.get('codigo')}}</h2><form method="post" class="grid">
     <div><label>Nombre / razón social</label><input name="nombre" value="{{d.get('nombre','')}}" required></div><div><label>Cédula (opcional)</label><input name="cedula" value="{{d.get('cedula','')}}"></div><div><label>Teléfono</label><input name="telefono" value="{{d.get('telefono','')}}"></div><div><label>Dirección</label><input name="direccion" value="{{d.get('direccion','')}}"></div>
