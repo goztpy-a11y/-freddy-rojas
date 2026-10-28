@@ -118,7 +118,7 @@ def pagos_diarios():
              .order_by(Record.created_at.desc()).all())
     # Los tickets nuevos entran a Pagos solo si el proveedor fue marcado en Administrar proveedores.
     # Los registros históricos sin la marca se mantienen visibles para no perder su seguimiento.
-    records=[r for r in records if not _data(r).get("excluir_de_pagos",False)]
+    records=[r for r in records if not _data(r).get("excluir_de_pagos",False) and _data(r).get("en_pagos",True) is not False]
     q=request.args.get("q","").strip().casefold()
     month=request.args.get("mes",datetime.now(ZoneInfo("America/Asuncion")).strftime("%Y-%m"))
     if q: records=[r for r in records if q in (r.title+" "+r.data+" "+str(r.amount)).casefold()]
