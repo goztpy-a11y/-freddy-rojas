@@ -992,6 +992,91 @@ def fletes():
     """,rows=rows,q=q,equip=equip,today=paraguay_now().strftime("%Y-%m-%d"))
 
 
+@app.route("/caja/ventas/<int:rid>/editar", methods=["GET", "POST"])
+@login_required
+def editar_venta_caja(rid):
+    _can_caja()
+    sale=db.session.get(Record,rid)
+    if not sale or sale.module!="ventas_caja":
+        abort(404)
+    data=_data(sale)
+    if request.method=="POST":
+        try:
+            cliente=request.form.get("cliente","").strip()
+            concepto=request.form.get("concepto","").strip()
+            fecha=request.form.get("fecha","").strip()
+            hora=request.form.get("hora","").strip()
+            medio=request.form.get("medio","").strip()
+            amount=Decimal(request.form.get("importe","").strip().replace(",",".")).quantize(Decimal("0.01"))
+            if not cliente or not concepto or not fecha or not hora or len(hora)!=5 or hora[2] != ":" or amount<=0 or medio not in ("Efectivo","Transferencia"):
+                raise InvalidOperation()
+            old_amount=Decimal(str(sale.amount or 0))
+            old_medio=str(data.get("medio",""))
+            old_account_id=data.get("company_account_id") or sale.company_account_id
+            old_account=None
+            if old_medio=="Transferencia":
+                try: old_account=db.session.get(CompanyAccount,int(old_account_id)) if old_account_id else None
+                except (ValueError,TypeError): old_account=None
+                if not old_account:
+                    flash("No se pudo identificar la cuenta bancaria original. La venta no fue modificada para proteger los saldos.")
+                    return redirect(url_for("ventas_caja"))
+            new_account=None
+            if medio=="Transferencia":
+                new_account=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).first()
+                if not new_account:
+                    flash("No hay una cuenta bancaria activa. La venta no fue modificada.")
+                    return redirect(url_for("ventas_caja"))
+            if old_medio=="Transferencia":
+                old_account.balance=Decimal(str(old_account.balance or 0))-old_amount
+            if new_account:
+                new_account.balance=Decimal(str(new_account.balance or 0))+amount
+            old_cash=old_amount if old_medio=="Efectivo" else Decimal("0")
+            new_cash=amount if medio=="Efectivo" else Decimal("0")
+            cash_delta=new_cash-old_cash
+            if cash_delta:
+                current_balance=_caja_chica_balance()
+                adjusted_balance=current_balance+cash_delta
+                if adjusted_balance<0:
+                    raise InvalidOperation()
+                correction_data={"tipo":"saldo","fecha":paraguay_now().strftime("%Y-%m-%d"),"saldo":str(adjusted_balance),
+                    "detalle":"Ajuste por edición de venta #"+str(sale.id),"medio":"Efectivo","clasificacion":"ingreso_venta",
+                    "origen":"edicion_venta_caja","venta_id":sale.id,"importe":str(cash_delta)}
+                correction=Record(module="caja_chica",title="Ajuste por edición de venta #"+str(sale.id),
+                    data=json.dumps(correction_data,ensure_ascii=False),amount=abs(cash_delta),status="Ajuste por edición",
+                    created_by=current_user().id)
+                db.session.add(correction)
+            data.update({"cliente":cliente,"concepto":concepto,"fecha":fecha,"hora":hora,"importe":str(amount),"medio":medio,
+                "cuenta_empresa":new_account.name if new_account else "Caja chica",
+                "company_account_id":new_account.id if new_account else None})
+            sale.title="Venta · "+cliente
+            sale.data=json.dumps(data,ensure_ascii=False)
+            sale.amount=amount
+            sale.company_account_id=new_account.id if new_account else None
+            sale.updated_at=datetime.utcnow()
+            log_action("editar venta en caja","ventas_caja",sale.id,
+                f"{cliente}; importe {amount}; medio {medio}; destino {data['cuenta_empresa']}")
+            db.session.commit()
+            flash("Venta actualizada. Se ajustaron los saldos correspondientes y quedó registrado el ajuste.")
+            return redirect(url_for("ventas_caja"))
+        except (InvalidOperation,ValueError,TypeError):
+            db.session.rollback()
+            flash("No se guardaron los cambios. Revisá los datos y los saldos.")
+            return redirect(url_for("editar_venta_caja",rid=rid))
+    accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).all()
+    return _page("Editar venta", """
+    <section class="card"><h2>Editar venta #{{sale.id}}</h2><form method="post" class="grid">
+    <div><label>Cliente</label><input name="cliente" value="{{d.get('cliente','')}}" required></div>
+    <div><label>Concepto de la venta</label><input name="concepto" value="{{d.get('concepto','')}}" required></div>
+    <div><label>Importe (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" value="{{sale.amount}}" required></div>
+    <div><label>Fecha de la venta</label><input name="fecha" type="date" value="{{d.get('fecha','')}}" required></div>
+    <div><label>Hora de la venta</label><input name="hora" type="time" value="{{d.get('hora','')}}" required></div>
+    <div><label>Forma de cobro</label><select name="medio" required><option value="Efectivo" {% if d.get('medio')=='Efectivo' %}selected{% endif %}>Efectivo</option><option value="Transferencia" {% if d.get('medio')=='Transferencia' %}selected{% endif %}>Transferencia</option></select></div>
+    <div><label>Destino</label><input value="{{d.get('cuenta_empresa','Caja chica')}}" readonly></div>
+    <div style="align-self:end"><button>Guardar cambios</button> <a class="btn" href="{{url_for('ventas_caja')}}">Cancelar</a></div></form>
+    <p>Al guardar, se actualizará el importe y se ajustarán los saldos de caja chica o banco según la forma de cobro.</p></section>
+    """,sale=sale,d=data,accounts=accounts)
+
+
 @app.route("/caja/ventas", methods=["GET", "POST"])
 @login_required
 def ventas_caja():
@@ -1045,7 +1130,7 @@ def ventas_caja():
     <div><label>Forma de cobro</label><select name="medio" id="sale-method" required><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select></div>
     <div id="sale-account-wrap"><label>Cuenta principal que recibirá las transferencias</label><input value="{{main_account.name if main_account else 'No hay una cuenta bancaria activa'}}" readonly></div>
     <div style="align-self:end"><button>Guardar venta</button></div></form><p><b>Saldo actual de Caja chica:</b> Gs. {{balance}}</p></section>
-    <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{d.get('hora') or local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
+    <section class="card"><h2>Historial de ventas</h2><button type="button" onclick="window.print()">Imprimir historial</button><div style="overflow-x:auto"><table><tr><th>Fecha y hora</th><th>Cliente</th><th>Concepto</th><th>Importe</th><th>Medio</th><th>Destino</th><th>Editar</th></tr>{% for r in rows %}{% set d=decode(r) %}<tr><td>{{d.get('fecha','')}} · {{d.get('hora') or local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{d.get('cliente','')}}</td><td>{{d.get('concepto','')}}</td><td>Gs. {{r.amount}}</td><td>{{d.get('medio','')}}</td><td>{{d.get('cuenta_empresa','')}}</td><td><a class="btn" style="padding:4px 8px;font-size:12px" href="{{url_for('editar_venta_caja',rid=r.id)}}">Editar</a></td></tr>{% else %}<tr><td colspan="7">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
     """,rows=rows,accounts=accounts,main_account=main_account,balance=balance,today=paraguay_now().strftime("%Y-%m-%d"),now_time=paraguay_now().strftime("%H:%M"),decode=_data)
 
 
