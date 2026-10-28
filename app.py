@@ -1593,6 +1593,50 @@ def module_page(module):
     {% for r,d in parsed %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{r.title}}</td><td>{% for k,v in d.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table>{% else %}<p>No hay registros para esa búsqueda.</p>{% endif %}</section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title=title,fields=fields,module=module,parsed=parsed,q=q,since=since,until=until,amount_filter=amount_filter)
 
 
+@app.get("/admin/diagnostico-cuentas-cobrar")
+@admin_required
+def diagnostico_cuentas_cobrar():
+    # Diagnóstico de solo lectura: no crea, edita ni elimina registros.
+    target_modules = ("cuentas_cobrar", "cobros_cuentas")
+    counts = {m: Record.query.filter_by(module=m).count() for m in target_modules}
+    records = Record.query.filter(Record.module.in_(target_modules)).order_by(Record.created_at.desc()).limit(200).all()
+    rows = []
+    for rec in records:
+        try:
+            data = json.loads(rec.data or "{}")
+        except Exception:
+            data = {"datos_no_legibles": "El contenido del registro no se pudo interpretar como JSON."}
+        user = db.session.get(User, rec.created_by) if rec.created_by else None
+        rows.append({"rec": rec, "data": data, "username": user.username if user else "No disponible"})
+    return render_template_string(BASE + """
+    <section class="card">
+      <h2>Comprobación de Cuentas por cobrar</h2>
+      <p>Consulta de solo lectura. Esta pantalla no guarda, edita ni elimina datos.</p>
+      <p><b>Registros en Cuentas por cobrar:</b> {{counts['cuentas_cobrar']}}</p>
+      <p><b>Registros en el módulo alternativo cobros_cuentas:</b> {{counts['cobros_cuentas']}}</p>
+      <div style="overflow-x:auto"><table>
+        <tr><th>ID interno</th><th>Fecha y hora</th><th>Módulo</th><th>Ticket / título</th><th>Importe guardado</th><th>Estado</th><th>Usuario</th><th>Datos guardados</th><th>Abrir</th></tr>
+        {% for row in rows %}
+        <tr>
+          <td>{{row.rec.id}}</td>
+          <td>{{local_time(row.rec.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td>
+          <td>{{row.rec.module}}</td>
+          <td>{{row.data.get('numero_ticket') or row.data.get('ticket') or row.rec.title}}</td>
+          <td>{{row.rec.amount}} {{row.data.get('moneda','PYG')}}</td>
+          <td>{{row.rec.status}}</td>
+          <td>{{row.username}}</td>
+          <td>{% for k,v in row.data.items() %}<div><b>{{k}}:</b> {{v}}</div>{% endfor %}</td>
+          <td><a class="btn" href="{{url_for('print_record',rid=row.rec.id)}}">Ver registro</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">No se encontraron registros en esos dos módulos.</td></tr>
+        {% endfor %}
+      </table></div>
+      <p>Se muestran hasta 200 registros recientes de esos módulos. Para volver a Cuentas por cobrar, <a href="{{url_for('module_page',module='cuentas_cobrar')}}">abrí el historial normal</a>.</p>
+    </section></main><footer>El Toro S.A. · Diagnóstico de solo lectura</footer></body></html>
+    """, title="Comprobación de Cuentas por cobrar", counts=counts, rows=rows)
+
+
 @app.post("/materiales/<int:mid>/precio")
 @admin_required
 def update_material_price(mid):
