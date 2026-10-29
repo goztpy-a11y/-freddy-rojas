@@ -76,9 +76,9 @@ MODULES = {
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
-  ("cliente","Cliente","text",True),("numero_ticket","Número de ticket","text",True),
-  ("material","Material descargado","text",True),("cantidad_kg","Kilogramos","number",True),
-  ("precio_kg","Precio por kilogramo","number",True),
+  ("cliente","Cliente","text",True),("numero_ticket","Número de ticket","text",False),
+  ("material","Material descargado","text",False),("cantidad_kg","Kilogramos","number",False),
+  ("precio_kg","Precio por kilogramo","number",False),
   ("importe_total","Importe total editable","number",False),
   ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
@@ -538,7 +538,7 @@ footer{display:block!important;color:#8b99aa}
 <a href="{{url_for('proveedores')}}">＋ &nbsp; Agregar proveedor</a><a href="{{url_for('module_page',module='materiales')}}">＋ &nbsp; Agregar material</a>
 {% else %}
 {% if allowed('caja') %}<a href="{{url_for('module_page',module='tickets')}}">Registrar carga</a><a href="{{url_for('pagos_diarios')}}">Pagos</a><a href="{{url_for('module_page',module='cuentas_cobrar')}}">Cuentas por cobrar</a><a href="{{url_for('module_page',module='cuentas_pagar')}}">Cuentas por pagar</a><a href="{{url_for('prestamos')}}">Préstamos</a><a href="{{url_for('proveedores')}}">Proveedores y precios</a><a href="{{url_for('listado_proveedores')}}">Proveedores</a><a href="{{url_for('planillas')}}">Cuenta de proveedores</a><a href="{{url_for('fletes')}}">Fletes</a><a href="{{url_for('caja_chica')}}">Caja chica</a><a href="{{url_for('ventas_caja')}}">Ventas de Caja</a>{% endif %}
-{% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a>{% endif %}
+{% if allowed('estacion') %}<a href="{{url_for('combustible_stock')}}">⛽ Estación de servicio</a><a href="{{url_for('mantenimiento')}}">🔧 Mantenimiento de camiones</a>{% endif %}
 {% if allowed('tesoreria') %}<a href="{{url_for('admin_section',section='tesoreria')}}">◇ &nbsp; Tesorería</a><a href="{{url_for('module_page',module='cuentas_pagar')}}">Cuentas por pagar</a><a href="{{url_for('module_page',module='cuentas_cobrar')}}">Cuentas por cobrar</a><a href="{{url_for('module_page',module='pagos_cuentas')}}">Movimientos de pagos</a>{% endif %}
 {% if allowed('gomeria') %}<a href="{{url_for('gomeria_camiones')}}">Gomería por camión</a><a href="{{url_for('servicios_gomeria')}}">Servicio de gomería</a><a href="{{url_for('gomeria_inventario')}}">Inventario de materiales</a><a href="{{url_for('gomeria_movimientos')}}">Movimientos de materiales</a>{% endif %}
 {% if allowed('auditoria') %}<a href="{{url_for('admin_section',section='auditoria')}}">Auditoría</a>{% endif %}
@@ -1436,10 +1436,10 @@ def module_page(module):
         <section class="card"><h2>{{title}}</h2><form method="post" class="grid" id="account-record-form">
         {% if module=='cuentas_cobrar' %}
         <div><label>Cliente</label><input name="cliente" required placeholder="Nombre del cliente"></div>
-        <div><label>Número de ticket</label><input name="numero_ticket" required placeholder="Número enviado por el chofer"></div>
-        <div><label>Material descargado</label><input name="material" required placeholder="Material"></div>
-        <div><label>Kilogramos</label><input name="cantidad_kg" id="receivable-kg" type="number" min="0.001" step="0.001" required></div>
-        <div><label>Precio por kilogramo</label><input name="precio_kg" id="receivable-price" type="number" min="0.000001" step="0.000001" required></div>
+        <div><label>Número de ticket</label><input name="numero_ticket" placeholder="Número enviado por el chofer (opcional)"></div>
+        <div><label>Material descargado</label><input name="material" placeholder="Material (opcional)"></div>
+        <div><label>Kilogramos</label><input name="cantidad_kg" id="receivable-kg" type="number" min="0" step="0.001"></div>
+        <div><label>Precio por kilogramo</label><input name="precio_kg" id="receivable-price" type="number" min="0" step="0.000001"></div>
         <div><label>Moneda</label><select name="moneda" id="receivable-currency" onchange="updateReceivableTotal();const r=this.form.querySelector('[name=tipo_cambio]');if(r){r.required=this.value==='USD';if(this.value==='PYG')r.value='1';else if(r.value==='1')r.value='';}"><option value="PYG">PYG · Guaraníes</option><option value="USD">USD · Dólares</option></select></div>
         <div><label>Tipo de cambio USD → PYG</label><input name="tipo_cambio" type="number" min="0.000001" step="0.000001" value="1" placeholder="Ej.: 7300"></div>
         <div><label>N.º de factura (opcional)</label><input name="factura"></div>
@@ -1487,7 +1487,7 @@ def module_page(module):
         if module == "cuentas_cobrar":
             try:
                 manual_total=(data.get("importe_total") or "").strip()
-                calculated=(Decimal(data.get("cantidad_kg","0").replace(",", "."))*Decimal(data.get("precio_kg","0").replace(",", "."))).quantize(Decimal("0.01"))
+                calculated=(Decimal((data.get("cantidad_kg") or "0").replace(",", "."))*Decimal((data.get("precio_kg") or "0").replace(",", "."))).quantize(Decimal("0.01"))
                 amount=Decimal(manual_total.replace(",", ".")).quantize(Decimal("0.01")) if manual_total else calculated
                 if amount<=0: raise InvalidOperation()
                 data["importe_total"]=str(amount)
