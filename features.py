@@ -662,13 +662,14 @@ def combustible_stock():
         action=request.form.get("action","entrada")
         if action=="venta":
             try:
-                litros=Decimal(request.form.get("litros_venta","").replace(",",".")); precio=Decimal(request.form.get("precio_litro","").replace(",","."))
+                litros=Decimal(request.form.get("litros_venta","").replace(",",".")); precio=Decimal(request.form.get("precio_litro","").replace(",", "."))
+                fecha_venta=request.form.get("fecha_venta","").strip() or paraguay_now().strftime("%Y-%m-%d")
                 cliente=request.form.get("cliente_venta","").strip(); medio=request.form.get("medio_venta","").strip()
                 entries=_rows("combustible_stock"); charges=_rows("combustible_camion")+_rows("combustible"); sales=_rows("ventas_combustible")
                 stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in sales),Decimal("0"))
                 if litros<=0 or precio<=0 or litros>stock or not cliente or not medio: raise InvalidOperation()
                 total=(litros*precio).quantize(Decimal("0.01"))
-                _save("ventas_combustible","Venta combustible · "+cliente,{"fecha":paraguay_now().strftime("%Y-%m-%d"),"cliente":cliente,"litros":str(litros),"precio_litro":str(precio),"total":str(total),"medio":medio},total,"Registrado")
+                _save("ventas_combustible","Venta combustible · "+cliente,{"fecha":fecha_venta,"cliente":cliente,"litros":str(litros),"precio_litro":str(precio),"total":str(total),"medio":medio},total,"Registrado")
                 flash("Venta de combustible registrada. Total: Gs. "+str(total)+". Stock actualizado.")
             except (InvalidOperation,ValueError): flash("Verificá cliente, litros, precio por litro y stock disponible.")
             return redirect(url_for("combustible_stock"))
@@ -689,13 +690,14 @@ def combustible_stock():
     <section class="card"><h2>Stock de combustible disponible</h2><div class="inventory-qty">{{stock}} litros</div>
     {% if user.role=='admin' %}<details style="margin-top:14px"><summary>Registrar entrada de combustible al stock</summary><form method="post" class="grid" style="margin-top:12px"><div><label>Litros ingresados</label><input name="litros" type="number" min="0.01" step="0.01" required></div><div><label>Detalle / comprobante (opcional)</label><input name="detalle"></div><div style="align-self:end"><button>Actualizar stock</button></div></form></details>{% endif %}
     <div style="margin-top:16px"><a class="btn" href="#formulario-carga">⛽ Cargar combustible</a> <a class="btn" href="#vender-combustible">Vender combustible</a></div></section>
-    <section class="card" id="vender-combustible"><h2>Vender combustible</h2><form method="post" class="grid"><input type="hidden" name="action" value="venta"><div><label>Cliente</label><input name="cliente_venta" required></div><div><label>Litros a vender (disponibles: {{stock}} L)</label><input name="litros_venta" type="number" min="0.01" max="{{stock}}" step="0.01" required></div><div><label>Precio por litro (Gs.)</label><input name="precio_litro" type="number" min="0.01" step="0.01" required></div><div><label>Medio de pago</label><select name="medio_venta" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Crédito</option><option>Otro</option></select></div><div style="align-self:end"><button>Registrar venta</button></div></form></section>
+    <section class="card" id="vender-combustible"><h2>Vender combustible</h2><form method="post" class="grid"><input type="hidden" name="action" value="venta"><div><label>Fecha de la venta</label><input name="fecha_venta" type="date" value="{{today}}" required></div><div><label>Cliente</label><input name="cliente_venta" required></div><div><label>Litros a vender (disponibles: {{stock}} L)</label><input name="litros_venta" type="number" min="0.01" max="{{stock}}" step="0.01" required></div><div><label>Precio por litro (Gs.)</label><input name="precio_litro" type="number" min="0.01" step="0.01" required></div><div><label>Medio de pago</label><select name="medio_venta" required><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Crédito</option><option>Otro</option></select></div><div style="align-self:end"><button>Registrar venta</button></div></form></section>
     <section class="card" id="formulario-carga"><h2>Cargar</h2><form method="post" action="{{url_for('cargar_combustible')}}" class="grid">
     <div><label>Nombre del chofer</label><input name="chofer" autocomplete="name" required maxlength="120"></div>
     <div><label>Chapa del camión o identificación de la maquinaria</label><input name="camion" required maxlength="80" placeholder="Ej.: ABC 123 o Excavadora 1"></div>
+    <div><label>Fecha de carga</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" max="{{stock}}" step="0.01" required></div>
     <div style="align-self:end"><button type="submit">Guardar carga</button></div></form></section>
-    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Camión o maquinaria</th><th>Litros cargados</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M:%S')}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
+    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Camión o maquinaria</th><th>Litros cargados</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{d.get("fecha", local_time(r.created_at).strftime("%Y-%m-%d"))}} · {{local_time(r.created_at).strftime("%H:%M:%S")}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
     <section class="card"><h2>Historial de ventas de combustible</h2><div style="overflow-x:auto"><table><tr><th>Fecha</th><th>Cliente</th><th>Litros</th><th>Precio por litro</th><th>Total</th><th>Medio de pago</th></tr>{% for r in sales %}{% set d=decode(r) %}<tr><td>{{d.get("fecha")}}</td><td>{{d.get("cliente")}}</td><td>{{d.get("litros")}} L</td><td>Gs. {{d.get("precio_litro")}}</td><td>Gs. {{r.amount}}</td><td>{{d.get("medio")}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
     """,stock=stock,charges=charges,sales=sales,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
@@ -704,13 +706,13 @@ def combustible_stock():
 def cargar_combustible():
     _can_area("estacion")
     try:
-        litros=Decimal(request.form.get("litros","").replace(",",".")); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")+_rows("combustible")
+        litros=Decimal(request.form.get("litros","").replace(",",".")); fecha_carga=request.form.get("fecha","").strip() or paraguay_now().strftime("%Y-%m-%d"); entries=_rows("combustible_stock"); charges=_rows("combustible_camion")+_rows("combustible")
         sales=_rows("ventas_combustible")
         stock=sum((Decimal(str(_data(r).get("litros",0))) for r in entries),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in charges),Decimal("0"))-sum((Decimal(str(_data(r).get("litros",0))) for r in sales),Decimal("0"))
         chofer=request.form.get("chofer","").strip()
         camion=request.form.get("camion","").strip()
         if litros<=0 or litros>stock or not chofer or not camion: raise InvalidOperation()
-        _save("combustible_camion","Carga combustible · "+camion,{"chofer":chofer,"camion":camion,"litros":str(litros),"fecha":paraguay_now().strftime("%Y-%m-%d")},0,"Cargado")
+        _save("combustible_camion","Carga combustible · "+camion,{"chofer":chofer,"camion":camion,"litros":str(litros),"fecha":fecha_carga},0,"Cargado")
         flash("Carga registrada y descontada del stock.")
     except (InvalidOperation,ValueError):
         flash("No se pudo cargar: verificá el chofer, la chapa, los litros y el stock disponible.")
