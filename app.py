@@ -612,6 +612,27 @@ footer{display:block!important;color:#8b99aa}
 })();
 </script>
 
+<script>
+(function(){
+  function addEditLinks(){
+    document.querySelectorAll('a[href*="/imprimir/"]').forEach(function(a){
+      if(a.dataset.editAdded) return;
+      var match=a.getAttribute("href").match(/\/imprimir\/(\d+)/);
+      if(!match) return;
+      a.dataset.editAdded="1";
+      var edit=document.createElement("a");
+      edit.className=a.className||"btn";
+      edit.href="/registro/"+match[1]+"/editar?next="+encodeURIComponent(location.pathname+location.search);
+      edit.textContent="Editar";
+      edit.style.marginLeft="6px";
+      a.insertAdjacentElement("afterend",edit);
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",addEditLinks);
+  else addEditLinks();
+})();
+</script>
+
 """
 
 def persistent_database_connected():
@@ -2166,6 +2187,96 @@ def print_record(rid):
     <p><b>Fecha:</b> {{local_time(rec.created_at).strftime('%d/%m/%Y %H:%M')}} &nbsp; <b>Estado:</b> {{rec.status}}</p>
     <table><tr><th>Dato</th><th>Información</th></tr>{% for k,v in data.items() %}{% if v is mapping %}<tr><td>{{k}}</td><td>{% for a,b in v.items() %}{{a}}: {{b}}<br>{% endfor %}</td></tr>{% elif v is sequence and v is not string %}<tr><td>{{k}}</td><td>{% for line in v %}{% if line is mapping %}{% for a,b in line.items() %}<b>{{a}}:</b> {{b}} &nbsp; {% endfor %}<br>{% else %}{{line}}<br>{% endif %}{% endfor %}</td></tr>{% else %}<tr><td>{{k}}</td><td>{{v}}</td></tr>{% endif %}{% endfor %}<tr><th>Monto total</th><th>{{rec.amount}}</th></tr></table>
     {% if rec.module=='cuentas_cobrar' and ticket_balance>0 %}<section class="card"><h2>Registrar cobro</h2><p>Saldo pendiente: {{ticket_balance}} {{data.get('moneda','PYG')}}</p><form method="post" action="{{url_for('module_page',module='cuentas_cobrar')}}" class="grid"><input type="hidden" name="accion" value="pago"><input type="hidden" name="registro_id" value="{{rec.id}}"><div><label>Importe a cobrar</label><input name="importe" type="number" min="0.01" max="{{ticket_balance}}" step="0.01" required></div><div><label>Cuenta bancaria</label><select name="company_account_id" required>{% for a in accounts %}<option value="{{a.id}}">{{a.name}} · PYG {{a.balance}} · USD {{a.balance_usd}}</option>{% endfor %}</select></div><div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Tipo de cambio USD → PYG</label><input name="tipo_cambio" type="number" min="0.000001" step="0.000001" value="{{data.get('tipo_cambio','1')}}" {% if data.get('moneda','PYG')=='USD' %}required{% endif %}></div><div><label>Medio</label><select name="medio"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Otro</option></select></div><div><label>Detalle</label><input name="detalle" placeholder="Detalle"></div><div><button>Registrar cobro</button></div></form></section>{% endif %}<p><button class="btn" onclick="window.print()">Imprimir</button> <a class="btn" href="{{url_for('module_page',module=rec.module)}}">Volver al sector</a></p></section></main><footer>El Toro S.A.</footer></body></html>""",title="Imprimir",rec=rec,data=data,ticket_balance=ticket_balance,accounts=CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id.asc()).all(),today=paraguay_now().strftime("%Y-%m-%d"))
+
+
+@app.route("/registro/<int:rid>/editar", methods=["GET","POST"])
+@login_required
+def edit_record(rid):
+    rec=db.get_or_404(Record,rid)
+    if not allowed(rec.module):
+        abort(403)
+    try:
+        original=json.loads(rec.data or "{}")
+        if not isinstance(original,dict):
+            original={"detalle":str(original)}
+    except (ValueError,TypeError):
+        original={"detalle":rec.data or ""}
+    # En estos módulos los valores numéricos pueden afectar caja, bancos,
+    # deudas o existencias. Se conservan protegidos para evitar descuadrar saldos.
+    sensitive_modules={
+        "tickets","cuentas_cobrar","cuentas_pagar","gastos","ventas","combustible",
+        "prestamos","prestamos_pagos","ventas_caja","caja_chica","pagos_diarios",
+        "flota","combustible_stock","gomeria_servicios","gomeria_movimientos",
+        "inventario","movimientos_stock","repuestos","proveedores","solicitudes",
+        "cheques","cuentas_empresa","planillas","fletes"
+    }
+    protected_numeric=rec.module in sensitive_modules
+    if request.method=="POST":
+        try:
+            updated=dict(original)
+            for key in original:
+                if key.startswith("_") or isinstance(original[key],(dict,list)):
+                    continue
+                form_key="field_"+key
+                if form_key not in request.form:
+                    continue
+                raw=request.form.get(form_key,"").strip()
+                old=original[key]
+                if isinstance(old,(int,float)) and not isinstance(old,bool):
+                    if protected_numeric:
+                        continue
+                    if raw=="":
+                        updated[key]=""
+                    else:
+                        updated[key]=str(Decimal(raw.replace(",",".")))
+                elif isinstance(old,bool):
+                    updated[key]=raw.lower() in ("1","true","si","sí","on")
+                else:
+                    updated[key]=raw
+            new_title=request.form.get("title",rec.title).strip()
+            new_status=request.form.get("status",rec.status).strip()
+            if not new_title or not new_status:
+                raise ValueError("El título y el estado son obligatorios.")
+            old_title=rec.title
+            rec.title=new_title[:220]
+            rec.status=new_status[:30]
+            rec.data=json.dumps(updated,ensure_ascii=False)
+            if not protected_numeric and request.form.get("amount","").strip()!="":
+                rec.amount=Decimal(request.form["amount"].strip().replace(",","."))
+            rec.updated_at=paraguay_now()
+            log_action("editar registro","editar:"+rec.module,rec.id,
+                       "Registro editado desde historial: "+old_title+" → "+rec.title)
+            db.session.commit()
+            flash("Registro actualizado. Los datos y los registros existentes se conservaron.")
+            return redirect(request.form.get("next") or url_for("general_history"))
+        except (ValueError,InvalidOperation,TypeError):
+            db.session.rollback()
+            flash("No se guardaron los cambios. Revisá los valores ingresados.")
+            return redirect(url_for("edit_record",rid=rid))
+    scalar_fields=[]
+    for key,value in original.items():
+        if key.startswith("_") or isinstance(value,(dict,list)):
+            continue
+        is_number=isinstance(value,(int,float)) and not isinstance(value,bool)
+        scalar_fields.append({"key":key,"value":str(value if value is not None else ""),
+                              "locked":bool(protected_numeric and is_number),
+                              "kind":"number" if is_number else "text"})
+    return render_template_string(BASE+"""
+    <section class="card"><h2>Editar registro</h2>
+    <p><strong>Sector:</strong> {{module_label}} · <strong>N.º:</strong> {{rec.id}}</p>
+    <form method="post" class="grid">
+    <input type="hidden" name="next" value="{{next_url}}">
+    <div><label>Descripción / título</label><input name="title" value="{{rec.title}}" required></div>
+    <div><label>Estado</label><input name="status" value="{{rec.status}}" required></div>
+    <div><label>Importe registrado</label><input name="amount" type="number" step="0.01" value="{{rec.amount}}" {% if protected_numeric %}readonly{% endif %}></div>
+    {% for f in fields %}<div><label>{{f.key}}</label><input name="field_{{f.key}}" value="{{f.value}}" {% if f.kind=='number' %}type="number" step="any"{% endif %} {% if f.locked %}readonly{% endif %}></div>{% endfor %}
+    <div><button class="btn" type="submit">Guardar cambios</button> <a class="btn" href="{{next_url}}">Cancelar</a></div>
+    </form>
+    {% if protected_numeric %}<p>Los importes, cantidades y valores numéricos vinculados a caja, bancos, deudas o inventario están protegidos para evitar diferencias en los saldos. Podés corregir los datos descriptivos.</p>{% endif %}
+    </section></main><footer>Freddy Rojas · Cada modificación queda registrada en auditoría</footer></body></html>
+    """,title="Editar registro",rec=rec,fields=scalar_fields,protected_numeric=protected_numeric,
+       module_label=MODULES.get(rec.module,(rec.module,))[0],
+       next_url=request.args.get("next") or request.referrer or url_for("general_history"))
 
 @app.get("/admin/respaldo.json")
 @admin_required
