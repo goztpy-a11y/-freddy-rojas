@@ -76,10 +76,10 @@ MODULES = {
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Vencimiento","date",False),("cheque_adelantado","Incluye cheque adelantado","checkbox",False)]),
  "cuentas_cobrar": ("Cuentas por cobrar", "tesoreria", [
-  ("cliente","Cliente","text",True),("numero_ticket","Número de ticket","text",False),
-  ("material","Material descargado","text",False),("cantidad_kg","Kilogramos","number",False),
-  ("precio_kg","Precio por kilogramo","number",False),
-  ("importe_total","Importe total editable","number",False),
+  ("cliente","Cliente","text",True),("concepto","Concepto / motivo","text",False),("numero_ticket","Número de ticket (opcional)","text",False),
+  ("material","Material (opcional)","text",False),("cantidad_kg","Kilogramos (opcional)","number",False),
+  ("precio_kg","Precio por kilogramo (opcional)","number",False),
+  ("importe_total","Importe total por cobrar","number",False),
   ("moneda","Moneda","select",True),("tipo_cambio","Tipo de cambio USD → PYG","number",False),
   ("factura","N.º de factura (opcional)","text",False),("fecha_factura","Fecha de factura (opcional)","date",False),
   ("vencimiento","Fecha estimada de cobro (opcional)","date",False)]),
@@ -1462,20 +1462,36 @@ def module_page(module):
                 if req and not data.get(key): flash("Falta completar: "+label); return redirect(url_for("module_page",module=module))
             try:
                 if module=="cuentas_cobrar":
-                    qty=Decimal(data.get("cantidad_kg","").replace(",","."))
-                    price=Decimal(data.get("precio_kg","").replace(",","."))
-                    ticket_no=data.get("numero_ticket","").strip()
-                    if qty<=0 or price<=0 or not ticket_no: raise InvalidOperation()
-                    for existing in originals:
-                        existing_data=json.loads(existing.data or "{}")
-                        if str(existing_data.get("numero_ticket","")).strip().casefold()==ticket_no.casefold():
-                            db.session.rollback(); flash("Ese número de ticket ya está registrado en Cuentas por cobrar."); return redirect(url_for("module_page",module=module))
+                    qty_raw=(data.get("cantidad_kg") or "").strip().replace(",",".")
+                    price_raw=(data.get("precio_kg") or "").strip().replace(",",".")
+                    qty=Decimal(qty_raw) if qty_raw else Decimal("0")
+                    price=Decimal(price_raw) if price_raw else Decimal("0")
+                    ticket_no=(data.get("numero_ticket") or "").strip()
+                    # El ticket es opcional. Solo validar duplicados si el usuario lo ingresó.
+                    if ticket_no:
+                        for existing in originals:
+                            existing_data=json.loads(existing.data or "{}")
+                            if str(existing_data.get("numero_ticket","")).strip().casefold()==ticket_no.casefold():
+                                db.session.rollback(); flash("Ese número de ticket ya está registrado en Cuentas por cobrar."); return redirect(url_for("module_page",module=module))
                     manual_total=(data.get("importe_total") or "").strip().replace(",",".")
-                    amount=(Decimal(manual_total).quantize(Decimal("0.01")) if manual_total else (qty*price).quantize(Decimal("0.01")))
+                    if manual_total:
+                        amount=Decimal(manual_total).quantize(Decimal("0.01"))
+                    elif qty>0 and price>0:
+                        amount=(qty*price).quantize(Decimal("0.01"))
+                    else:
+                        raise InvalidOperation()
                     if amount<=0: raise InvalidOperation()
+                    if qty_raw and qty<=0: raise InvalidOperation()
+                    if price_raw and price<=0: raise InvalidOperation()
+                    data["cantidad_kg"]=qty_raw
+                    data["precio_kg"]=price_raw
                     data["importe_total"]=str(amount)
                     data["importe"]=str(amount)
-                    data["concepto"]="Ticket "+ticket_no+" · "+data.get("material","").strip()
+                    concept=(data.get("concepto") or "").strip()
+                    material=(data.get("material") or "").strip()
+                    data["concepto"]=concept or (("Ticket "+ticket_no) if ticket_no else "Cuenta por cobrar")
+                    if material and not concept:
+                        data["concepto"] += " · "+material
                 else:
                     amount=Decimal(data.get("importe","0").replace(",","."))
                 if amount<=0: raise InvalidOperation()
