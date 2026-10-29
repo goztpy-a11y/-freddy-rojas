@@ -548,6 +548,70 @@ footer{display:block!important;color:#8b99aa}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
 </nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
+<script id="FR-MONEY-DISPLAY-FORMAT-V1">
+(function(){
+  function formatAmount(raw){
+    var s=String(raw||"").trim();
+    if(!s) return s;
+    var prefix="";
+    var m=s.match(/^(Gs\\.?\\s*|PYG\\s+|USD\\s+|\\$\\s*)/i);
+    if(m){prefix=m[0];s=s.slice(m[0].length).trim();}
+    if(!/^-?[0-9][0-9.,]*$/.test(s)) return raw;
+    var lastComma=s.lastIndexOf(","), lastDot=s.lastIndexOf(".");
+    var sep=Math.max(lastComma,lastDot), decimals="";
+    if(sep>=0){
+      var tail=s.slice(sep+1);
+      if(/^\\d+$/.test(tail) && tail.length>0 && tail.length<=2){
+        var isDecimal = (lastComma>lastDot || (lastDot>lastComma && s.indexOf(".")===lastDot));
+        if(isDecimal){decimals=tail;s=s.slice(0,sep);}
+      }
+    }
+    var digits=s.replace(/[.,]/g,"");
+    if(!/^\\d+$/.test(digits)) return raw;
+    var neg=digits.startsWith("-"); if(neg) digits=digits.slice(1);
+    digits=digits.replace(/^0+(?=\\d)/,"");
+    var grouped=digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g,".");
+    if(decimals && !/^0+$/.test(decimals)) grouped+=","+decimals;
+    return prefix+(neg?"-":"")+grouped;
+  }
+  function moneyHeader(text){
+    var h=(text||"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"");
+    if(/kg|kilogram|litro|cantidad|unidades|operaciones|movimientos|ticket|fecha|hora|porcentaje|descuento/.test(h)) return false;
+    return /monto|importe|precio|costo|saldo|deuda|pag(o|os)|cobr(o|os)|recibid|facturad|total|balance|efectivo|transferencia|gastos/.test(h);
+  }
+  function update(){
+    document.querySelectorAll("table").forEach(function(table){
+      var headers=Array.from(table.querySelectorAll("tr:first-child th")).map(function(th){return th.textContent.trim();});
+      table.querySelectorAll("tr").forEach(function(tr,index){
+        if(index===0 && tr.querySelector("th")) return;
+        Array.from(tr.children).forEach(function(cell,i){
+          if(!cell.matches("td") || !moneyHeader(headers[i]||"")) return;
+          cell.querySelectorAll("input,select,textarea,button,a,script,style").forEach(function(){});
+          Array.from(cell.childNodes).forEach(function(node){
+            if(node.nodeType===3) node.nodeValue=node.nodeValue.replace(/(Gs\\.?\\s*)?(-?\\d[\\d.,]*)(?![\\d.,])/g,function(match,currency,number){
+              return (currency||"")+formatAmount(number);
+            });
+          });
+          cell.querySelectorAll("span,strong,b,div,p").forEach(function(el){
+            if(el.children.length===0 && !el.querySelector("input,select,textarea,button,a") && /^[\\s]*(?:Gs\\.?\\s*)?-?[0-9][0-9.,]*[\\s]*$/.test(el.textContent)){
+              el.textContent=el.textContent.replace(/(Gs\\.?\\s*)?(-?[0-9][0-9.,]*)/,function(match,currency,number){return (currency||"")+formatAmount(number);});
+            }
+          });
+        });
+      });
+    });
+    document.querySelectorAll("p,div,span,strong,option,li").forEach(function(el){
+      if(el.children.length>0 && !el.matches("option")) return;
+      var txt=el.textContent||"";
+      if(/(?:Gs\\.?|PYG|USD|importe|monto|precio|costo|saldo pendiente|total del mes|gastos registrados|pagos registrados)/i.test(txt)){
+        el.textContent=txt.replace(/(Gs\\.?\\s*|PYG\\s+|USD\\s+|\\$\\s*)(-?[0-9][0-9.,]*)/gi,function(match,currency,number){return currency+formatAmount(number);});
+      }
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",update); else update();
+})();
+</script>
+
 """
 
 def persistent_database_connected():
