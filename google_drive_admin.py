@@ -200,11 +200,7 @@ def google_drive_settings():
       {% endif %}
     {% endif %}
     </section>
-    <section class="card"><h2>Dirección de retorno para Google</h2>
-    <p>Cuando se creen las credenciales OAuth, registrar exactamente esta dirección como URI de redirección autorizada:</p>
-    <p><code>{{callback_uri}}</code></p>
-    <p>Permiso solicitado: crear y administrar únicamente los archivos que Freddy Rojas genere con esta integración.</p>
-    </section></main></body></html>
+</main></body></html>
     """, row=row, configured=configured, callback_uri=_redirect_uri(), folder_name=FOLDER_NAME)
 
 
