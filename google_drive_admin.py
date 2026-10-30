@@ -231,35 +231,48 @@ def google_drive_callback():
     expected_state = session.pop("google_drive_oauth_state", None)
     received_state = request.args.get("state")
     if not expected_state or not received_state or not secrets.compare_digest(expected_state, received_state):
-        abort(400)
+        app.logger.warning("Google Drive OAuth: estado de sesión ausente o no coincidente.")
+        flash("La sesión de autorización venció o cambió al regresar de Google. Iniciá la conexión nuevamente.")
+        return redirect(url_for("google_drive_settings"))
     if request.args.get("error"):
+        app.logger.warning("Google Drive OAuth denegado: %s", request.args.get("error"))
         flash("Google no autorizó la conexión. No se guardó ninguna cuenta.")
         return redirect(url_for("google_drive_settings"))
     code = request.args.get("code")
     if not code:
-        flash("Google no devolvió el código de autorización.")
+        flash("Google no devolvió el código de autorización. Volvé a intentar.")
         return redirect(url_for("google_drive_settings"))
+    stage = "intercambio del permiso con Google"
     try:
         flow = _new_flow(expected_state)
         flow.fetch_token(code=code)
         credentials = flow.credentials
         if not credentials.refresh_token:
-            raise RuntimeError("Google no entregó permiso de acceso sin conexión. Volvé a autorizar con consentimiento.")
+            raise RuntimeError("Google no entregó permiso de acceso persistente. Volvé a autorizar y aceptá los permisos solicitados.")
+        stage = "validación de la cuenta de Google"
         claims = id_token.verify_oauth2_token(
             credentials.id_token, GoogleRequest(), os.environ["GOOGLE_CLIENT_ID"].strip()
         )
         email = claims.get("email")
         if not email or not claims.get("email_verified"):
-            raise RuntimeError("No se pudo verificar la cuenta de Google.")
+            raise RuntimeError("Google no devolvió un correo verificado.")
+        stage = "acceso a Google Drive y creación de la carpeta"
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
         folder_id = _create_drive_folder(service)
+        stage = "cifrado y guardado seguro de la conexión"
         _save_connection(email, credentials.to_json(), folder_id)
-        log_action("conectar Google Drive", "backup", None, "Cuenta de Google Drive conectada: " + email)
-        db.session.commit()
-        flash("Cuenta de Google conectada correctamente. Ya podés guardar copias en Drive.")
+        try:
+            log_action("conectar Google Drive", "backup", None, "Cuenta de Google Drive conectada: " + email)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("La conexión Drive se guardó, pero falló el registro de auditoría.")
+        flash("Conexión exitosa. Cuenta vinculada: " + email)
+        app.logger.info("Google Drive conectado correctamente para %s.", email)
     except Exception:
         db.session.rollback()
-        flash("No se pudo completar la conexión. Revisá que Google Drive API esté habilitada y que las credenciales OAuth y la URI de retorno coincidan.")
+        app.logger.exception("Falló Google Drive OAuth durante: %s", stage)
+        flash("No se pudo completar la conexión. Falló esta etapa: " + stage + ". El detalle técnico quedó registrado.")
     return redirect(url_for("google_drive_settings"))
 
 
