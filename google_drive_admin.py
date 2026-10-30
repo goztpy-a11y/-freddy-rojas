@@ -392,3 +392,172 @@ def add_google_drive_navigation(response):
     except Exception:
         pass
     return response
+
+
+# Centro unificado de copias: conserva las rutas y la conexión OAuth existentes.
+def _latest_drive_backup(service, row):
+    result = service.files().list(
+        q="'" + row["folder_id"] + "' in parents and trashed = false",
+        orderBy="createdTime desc",
+        pageSize=1,
+        fields="files(id,name,createdTime,size,mimeType)"
+    ).execute()
+    files = result.get("files", [])
+    return files[0] if files else None
+
+
+def _drive_backup_bytes(service, file_id):
+    return service.files().get_media(fileId=file_id).execute()
+
+
+def _backup_center_unified():
+    row = _row()
+    configured = bool(_client_config())
+    latest = None
+    drive_error = None
+    if row:
+        try:
+            _, service, row = _credentials_and_service(row)
+            latest = _latest_drive_backup(service, row)
+        except Exception:
+            app.logger.exception("No se pudo consultar la última copia de Google Drive.")
+            drive_error = "No se pudo consultar Google Drive. Podés volver a intentar o verificar la conexión."
+    return render_template_string("""
+    <!doctype html><html lang="es"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Copias de seguridad · Freddy Rojas</title>
+    <style>
+    *{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172b45;font:14px/1.5 system-ui,Arial,sans-serif}
+    header{background:#142b46;color:#fff;padding:17px 22px;font-weight:800}
+    main{max-width:900px;margin:28px auto;padding:0 16px}.card{background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 5px 18px rgba(22,46,75,.035)}
+    h1{font-size:24px;margin:0 0 16px}h2{font-size:18px;margin:0 0 12px}p{color:#52657b}
+    .btn,button{display:inline-block;background:#245fa8;color:white;text-decoration:none;padding:12px 17px;border:0;border-radius:9px;font-weight:750;font-size:14px;cursor:pointer}
+    .btn:hover,button:hover{background:#194b86}.secondary{background:#edf3fa;color:#245fa8}.danger{background:#a8323d}
+    .status{font-weight:800;color:#187347}.warning{background:#fff7e5;border:1px solid #f2dfb2;padding:13px;border-radius:9px;color:#79561a;overflow-wrap:anywhere}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:17px}.actions form{margin:0}
+    .meta{background:#f4f7fb;padding:13px;border-radius:9px;margin:12px 0}.meta b{color:#172b45}
+    .back{color:#245fa8;text-decoration:none;font-weight:700}.message{padding:12px 14px;background:#edf7f0;border:1px solid #cce8d4;border-radius:9px;margin:10px 0;color:#17633a}
+    @media(max-width:600px){.card{padding:16px}h1{font-size:21px}.btn,button{width:100%;text-align:center}.actions form{width:100%}}
+    </style></head><body><header>EL TORO S.A. · Freddy Rojas</header><main>
+    <p><a class="back" href="/">← Volver al inicio</a></p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="message" role="status">{{message}}</div>{% endfor %}
+    {% endwith %}
+    <section class="card"><h1>Copias de seguridad</h1>
+    <p>Google Drive · {% if row %}<b>{{row.email}}</b>{% else %}Cuenta no conectada{% endif %}</p>
+    {% if row %}
+      <p class="status">Google Drive conectado correctamente.</p>
+      <div class="actions">
+        <form method="post" action="/admin/google-drive/desconectar" onsubmit="return confirm('¿Desconectar Google Drive de Freddy Rojas?');"><button class="danger" type="submit">Desconectar Google Drive</button></form>
+      </div>
+    {% else %}
+      {% if configured %}
+        <p>Conectá la cuenta de Google Drive para guardar y consultar tus copias.</p>
+        <a class="btn" href="/admin/google-drive/conectar">Conectar Google Drive</a>
+      {% else %}
+        <div class="warning">Falta completar la configuración OAuth de Google en Render.</div>
+      {% endif %}
+    {% endif %}
+    </section>
+    <section class="card"><h2>Última copia correcta</h2>
+    {% if latest %}
+      <div class="meta"><div><b>Fecha y hora:</b> {{latest.local_created}}</div>
+      <div><b>Archivo:</b> {{latest.name}}</div>
+      {% if latest.size %}<div><b>Tamaño:</b> {{latest.size}} bytes</div>{% endif %}</div>
+    {% elif row %}
+      <p>Todavía no hay copias guardadas en la carpeta de Google Drive.</p>
+    {% else %}
+      <p>Conectá Google Drive para mostrar la fecha y el archivo de la última copia.</p>
+    {% endif %}
+    {% if drive_error %}<div class="warning">{{drive_error}}</div>{% endif %}
+    <div class="actions">
+      {% if row %}
+        <form method="post" action="/admin/copias/crear"><button type="submit">Guardar copia ahora en Google Drive</button></form>
+        <a class="btn secondary" href="/admin/copias/verificar">Verificar última copia</a>
+        {% if latest %}<a class="btn secondary" href="/admin/copias/descargar">Descargar copia</a>{% endif %}
+      {% endif %}
+    </div>
+    </section>
+    <p>La copia incluye los registros guardados hasta el momento. Guardá una copia adicional en tu dispositivo cuando lo necesites.</p>
+    </main></body></html>
+    """, row=row, configured=configured, latest=latest, drive_error=drive_error)
+
+
+@app.post("/admin/copias/crear")
+@admin_required
+def create_drive_backup_from_center():
+    try:
+        raw, table_count, row_count = _create_full_backup()
+        verification = verify_backup_bytes(raw)
+        filename = "freddy_rojas_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json"
+        uploaded = upload_backup_bytes(raw, filename)
+        if not uploaded:
+            raise RuntimeError("No hay una cuenta de Google Drive conectada.")
+        log_action(
+            "respaldo manual verificado", "backup", None,
+            f"Archivo {uploaded.get('name', filename)}; {table_count} tablas; {row_count} filas; "
+            f"SHA-256 {verification['sha256']}; Drive ID {uploaded.get('id', '')}"
+        )
+        db.session.commit()
+        flash("Copia guardada y verificada en Google Drive: " + uploaded.get("name", filename))
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Falló la creación manual de la copia desde el centro unificado.")
+        flash("No se pudo guardar la copia. Revisá la conexión de Google Drive e intentá nuevamente.")
+    return redirect(url_for("backup_center"))
+
+
+@app.get("/admin/copias/verificar")
+@admin_required
+def verify_latest_drive_backup():
+    try:
+        _, service, row = _credentials_and_service()
+        latest = _latest_drive_backup(service, row)
+        if not latest:
+            raise RuntimeError("No hay ninguna copia guardada en Google Drive.")
+        raw = _drive_backup_bytes(service, latest["id"])
+        result = verify_backup_bytes(raw)
+        log_action(
+            "verificar última copia", "backup", None,
+            f"Verificación correcta: {latest['name']}; {result['table_count']} tablas; "
+            f"{result['total_rows']} filas; SHA-256 {result['sha256']}"
+        )
+        db.session.commit()
+        flash(
+            "Verificación correcta: la copia es legible. "
+            + str(result["table_count"]) + " tablas y "
+            + str(result["total_rows"]) + " registros."
+        )
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Falló la verificación de la última copia de Google Drive.")
+        flash("No se pudo verificar la última copia. Revisá los registros y la conexión.")
+    return redirect(url_for("backup_center"))
+
+
+@app.get("/admin/copias/descargar")
+@admin_required
+def download_latest_drive_backup():
+    try:
+        _, service, row = _credentials_and_service()
+        latest = _latest_drive_backup(service, row)
+        if not latest:
+            abort(404)
+        raw = _drive_backup_bytes(service, latest["id"])
+        verify_backup_bytes(raw)
+        log_action("descargar última copia", "backup", None,
+                   "Descarga verificada desde Google Drive: " + latest["name"])
+        db.session.commit()
+        response = Response(raw, mimetype="application/json")
+        response.headers["Content-Disposition"] = 'attachment; filename="' + latest["name"].replace('"', '') + '"'
+        response.headers["Content-Length"] = str(len(raw))
+        return response
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("No se pudo descargar la última copia de Google Drive.")
+        flash("No se pudo descargar la copia o la verificación no fue correcta.")
+        return redirect(url_for("backup_center"))
+
+
+# Reemplaza la pantalla anterior de copias por la vista unificada estilo EL TORO RECICLADOS.
+app.view_functions["backup_center"] = admin_required(_backup_center_unified)
