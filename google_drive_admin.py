@@ -85,12 +85,16 @@ def _redirect_uri():
     return os.environ.get("GOOGLE_REDIRECT_URI", CALLBACK_URI).strip()
 
 
-def _new_flow(state=None):
+def _new_flow(state=None, code_verifier=None):
     config = _client_config()
     if not config:
         raise RuntimeError("La conexión todavía está pendiente de configurar las credenciales OAuth de Google.")
-    flow = Flow.from_client_config(config, scopes=SCOPES, state=state)
+    flow = Flow.from_client_config(
+        config, scopes=SCOPES, state=state, autogenerate_code_verifier=True
+    )
     flow.redirect_uri = _redirect_uri()
+    if code_verifier:
+        flow.code_verifier = code_verifier
     return flow
 
 
@@ -219,6 +223,10 @@ def google_drive_connect():
             include_granted_scopes="true",
             prompt="consent",
         )
+        # PKCE: conservar el verificador generado para usarlo al canjear el código.
+        if not flow.code_verifier:
+            raise RuntimeError("No se pudo generar el verificador PKCE de Google.")
+        session["google_drive_code_verifier"] = flow.code_verifier
         return redirect(authorization_url)
     except Exception:
         flash("No se pudo iniciar la conexión con Google. Revisá la configuración OAuth.")
@@ -238,13 +246,18 @@ def google_drive_callback():
         app.logger.warning("Google Drive OAuth denegado: %s", request.args.get("error"))
         flash("Google no autorizó la conexión. No se guardó ninguna cuenta.")
         return redirect(url_for("google_drive_settings"))
+    code_verifier = session.pop("google_drive_code_verifier", None)
+    if not code_verifier:
+        flash("La sesión perdió la verificación de seguridad de Google. Iniciá la conexión nuevamente.")
+        app.logger.warning("Google Drive OAuth: falta el verificador PKCE en la sesión de retorno.")
+        return redirect(url_for("google_drive_settings"))
     code = request.args.get("code")
     if not code:
         flash("Google no devolvió el código de autorización. Volvé a intentar.")
         return redirect(url_for("google_drive_settings"))
     stage = "intercambio del permiso con Google"
     try:
-        flow = _new_flow(expected_state)
+        flow = _new_flow(expected_state, code_verifier=code_verifier)
         flow.fetch_token(code=code)
         credentials = flow.credentials
         if not credentials.refresh_token:
