@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 
-from flask import Response, abort, render_template_string, send_file
+from flask import Response, abort, flash, render_template_string, send_file
 from sqlalchemy import inspect, text
 
 from app import app, db, admin_required, current_user, log_action, AuditLog
@@ -96,8 +96,18 @@ def backup_export_full():
     digest = hashlib.sha256(raw).hexdigest()
     log_action("crear copia completa", "backup", None,
                f"Descarga completa: {table_count} tablas, {row_count} filas, SHA-256 {digest}")
-    db.session.commit()
     filename = "freddy_rojas_respaldo_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+    try:
+        # Si Google Drive ya está conectado, guardar también esta misma copia allí.
+        from google_drive_admin import upload_backup_bytes
+        uploaded = upload_backup_bytes(raw, filename)
+        if uploaded:
+            log_action("subir copia a Google Drive", "backup", None,
+                       f"Archivo guardado en Drive: {uploaded.get('name', filename)}")
+            flash("La copia también se guardó en Google Drive.")
+    except Exception:
+        flash("La copia se descargó, pero no se pudo guardar en Google Drive. Revisá la conexión.")
+    db.session.commit()
     return send_file(BytesIO(raw), mimetype="application/json", as_attachment=True, download_name=filename)
 
 
