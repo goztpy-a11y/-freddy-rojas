@@ -80,7 +80,7 @@ def backup_center():
     <section class="card"><h1>Copias de seguridad</h1>
     <p>Generá y descargá una copia de seguridad de la información almacenada en Freddy Rojas.</p>
     <div class="warning"><b>Importante:</b> el archivo puede contener información empresarial y credenciales protegidas. Guardalo en un lugar privado y no lo compartas.</div>
-    <div class="actions"><a class="btn" href="/admin/respaldo.json">Crear y descargar copia completa</a></div>
+    <div class="actions"><a class="btn" href="/admin/respaldo.json">Crear y descargar copia completa</a><a class="btn" href="/admin/google-drive">Configurar Google Drive</a></div>
     </section>
     <section class="card"><h2>Historial de copias descargadas</h2>
     <table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Resultado</th></tr></thead><tbody>
