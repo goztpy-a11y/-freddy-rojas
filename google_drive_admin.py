@@ -8,7 +8,7 @@ from io import BytesIO
 
 import requests
 from cryptography.fernet import Fernet
-from flask import abort, flash, redirect, render_template_string, request, session, url_for
+from flask import Response, abort, flash, redirect, render_template_string, request, session, url_for
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 from google.oauth2.credentials import Credentials
@@ -18,7 +18,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from sqlalchemy import text
 
 from app import app, db, admin_required, current_user, log_action
-from backup_admin import _create_full_backup
+from backup_admin import _create_full_backup, verify_backup_bytes
 
 SCOPES = [
     "openid",
@@ -283,6 +283,46 @@ def google_drive_callback():
         app.logger.exception("Falló Google Drive OAuth durante: %s", stage)
         flash("No se pudo completar la conexión. Falló esta etapa: " + stage + ". El detalle técnico quedó registrado.")
     return redirect(url_for("google_drive_settings"))
+
+
+@app.post("/internal/google-drive/nightly-backup")
+def google_drive_nightly_backup():
+    expected_token = os.environ.get("BACKUP_JOB_TOKEN", "").strip()
+    supplied = request.headers.get("Authorization", "")
+    if not expected_token or not secrets.compare_digest(supplied, "Bearer " + expected_token):
+        return Response(json.dumps({"ok": False, "error": "No autorizado."}),
+                        status=401, mimetype="application/json")
+    try:
+        row = _row()
+        if not row:
+            raise RuntimeError("No hay una cuenta de Google Drive conectada.")
+        raw, _, _ = _create_full_backup()
+        verification = verify_backup_bytes(raw)
+        filename = "freddy_rojas_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json"
+        uploaded = upload_backup_bytes(raw, filename)
+        if not uploaded:
+            raise RuntimeError("No se pudo guardar la copia en Google Drive.")
+        log_action(
+            "respaldo automático verificado", "backup", None,
+            f"Archivo {filename}; {verification['table_count']} tablas; "
+            f"{verification['total_rows']} filas; SHA-256 {verification['sha256']}; "
+            f"Drive ID {uploaded.get('id', '')}"
+        )
+        db.session.commit()
+        result = {
+            "ok": True, "verified": True, "filename": uploaded.get("name", filename),
+            "table_count": verification["table_count"],
+            "total_rows": verification["total_rows"],
+            "size_bytes": verification["size_bytes"],
+            "sha256": verification["sha256"],
+        }
+        app.logger.info("Respaldo automático de Google Drive creado y verificado: %s", result["filename"])
+        return Response(json.dumps(result, ensure_ascii=False), status=200, mimetype="application/json")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Falló el respaldo automático nocturno de Google Drive.")
+        return Response(json.dumps({"ok": False, "error": "El respaldo automático falló. Revisá los registros del servicio."}),
+                        status=500, mimetype="application/json")
 
 
 @app.post("/admin/google-drive/subir-copia")
