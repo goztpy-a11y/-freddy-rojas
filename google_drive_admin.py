@@ -258,7 +258,7 @@ def google_drive_callback():
     stage = "intercambio del permiso con Google"
     try:
         flow = _new_flow(expected_state, code_verifier=code_verifier)
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=code, code_verifier=code_verifier)
         credentials = flow.credentials
         if not credentials.refresh_token:
             raise RuntimeError("Google no entregó permiso de acceso persistente. Volvé a autorizar y aceptá los permisos solicitados.")
