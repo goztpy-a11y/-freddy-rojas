@@ -381,18 +381,8 @@ def google_drive_disconnect():
     return redirect(url_for("google_drive_settings"))
 
 
-@app.after_request
-def add_google_drive_navigation(response):
-    try:
-        user = current_user()
-        if user and user.role == "admin" and response.mimetype == "text/html":
-            html = response.get_data(as_text=True)
-            link = '<a href="/admin/google-drive">Google Drive</a>'
-            if "</nav>" in html and link not in html:
-                response.set_data(html.replace("</nav>", link + "</nav>", 1))
-    except Exception:
-        pass
-    return response
+# La conexión de Google Drive se administra desde /admin/copias.
+# No se agrega un acceso independiente al menú para evitar duplicar opciones.
 
 
 # Centro unificado de copias: conserva las rutas y la conexión OAuth existentes.
