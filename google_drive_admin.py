@@ -55,9 +55,12 @@ def _row():
 
 
 def _fernet():
+    dedicated_key = os.environ.get("GOOGLE_DRIVE_ENCRYPTION_KEY", "").strip()
+    if dedicated_key:
+        return Fernet(dedicated_key.encode("ascii"))
     secret = app.config.get("SECRET_KEY", "")
     if not secret or secret == "development-only-change-me":
-        raise RuntimeError("Falta una SECRET_KEY segura y persistente en la configuración del servicio.")
+        raise RuntimeError("Falta GOOGLE_DRIVE_ENCRYPTION_KEY en el servicio.")
     key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
     return Fernet(key)
 
