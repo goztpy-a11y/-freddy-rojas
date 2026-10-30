@@ -23,6 +23,39 @@ def _backup_value(value):
     return value
 
 
+def verify_backup_bytes(raw):
+    """Comprueba integridad estructural y legibilidad de una copia JSON completa."""
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("La copia no es un JSON UTF-8 legible.") from exc
+    if not isinstance(payload, dict) or payload.get("format") != "freddy-rojas-full-backup-v1":
+        raise ValueError("El formato de la copia no es válido.")
+    tables = payload.get("tables")
+    if not isinstance(tables, dict) or not tables:
+        raise ValueError("La copia no contiene tablas.")
+    counted_rows = 0
+    for table_name, table in tables.items():
+        if not isinstance(table, dict):
+            raise ValueError("Estructura inválida en tabla: " + str(table_name))
+        columns, rows = table.get("columns"), table.get("rows")
+        if not isinstance(columns, list) or not isinstance(rows, list):
+            raise ValueError("Faltan columnas o filas en tabla: " + str(table_name))
+        if table.get("row_count") != len(rows):
+            raise ValueError("La cantidad de filas no coincide en tabla: " + str(table_name))
+        counted_rows += len(rows)
+    if payload.get("table_count") != len(tables):
+        raise ValueError("La cantidad de tablas no coincide.")
+    if payload.get("total_rows") != counted_rows or counted_rows <= 0:
+        raise ValueError("La cantidad total de registros no coincide o la copia está vacía.")
+    return {
+        "table_count": len(tables),
+        "total_rows": counted_rows,
+        "size_bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
 def _create_full_backup():
     inspector = inspect(db.engine)
     table_names = sorted(inspector.get_table_names())
@@ -93,7 +126,8 @@ def backup_center():
 
 def backup_export_full():
     raw, table_count, row_count = _create_full_backup()
-    digest = hashlib.sha256(raw).hexdigest()
+    verification = verify_backup_bytes(raw)
+    digest = verification["sha256"]
     log_action("crear copia completa", "backup", None,
                f"Descarga completa: {table_count} tablas, {row_count} filas, SHA-256 {digest}")
     filename = "freddy_rojas_respaldo_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
