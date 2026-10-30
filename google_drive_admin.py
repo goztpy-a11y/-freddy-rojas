@@ -173,6 +173,11 @@ def google_drive_settings():
     code{overflow-wrap:anywhere}form{display:inline-block;margin:6px 6px 0 0}
     </style></head><body><header>EL TORO S.A. · Freddy Rojas</header><main>
     <p><a class="btn secondary" href="/admin/copias">← Volver a copias de seguridad</a></p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="notice" role="status">{{message}}</div>
+      {% endfor %}
+    {% endwith %}
     <section class="card"><h1>Conexión con Google Drive</h1>
     {% if row %}
       <p class="ok">Cuenta conectada: <b>{{row.email}}</b></p>
