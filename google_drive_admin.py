@@ -136,6 +136,20 @@ def _create_drive_folder(service):
     return folder["id"]
 
 
+def upload_backup_bytes(raw, filename):
+    """Sube a Drive una copia recién generada si hay una cuenta conectada."""
+    row = _row()
+    if not row:
+        return None
+    _, service, row = _credentials_and_service(row)
+    media = MediaIoBaseUpload(BytesIO(raw), mimetype="application/json", resumable=True)
+    return service.files().create(
+        body={"name": filename, "parents": [row["folder_id"]]},
+        media_body=media,
+        fields="id,name,webViewLink"
+    ).execute()
+
+
 @app.get("/admin/google-drive")
 @admin_required
 def google_drive_settings():
