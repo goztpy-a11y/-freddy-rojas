@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from io import BytesIO
 
 import requests
@@ -403,7 +404,21 @@ def _latest_drive_backup(service, row):
         fields="files(id,name,createdTime,size,mimeType)"
     ).execute()
     files = result.get("files", [])
-    return files[0] if files else None
+    if not files:
+        return None
+    item = files[0]
+    created = item.get("createdTime")
+    if created:
+        try:
+            local_created = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(
+                ZoneInfo("America/Asuncion")
+            )
+            item["local_created"] = local_created.strftime("%d/%m/%Y %H:%M:%S")
+        except (ValueError, TypeError):
+            item["local_created"] = created
+    else:
+        item["local_created"] = "Fecha no disponible"
+    return item
 
 
 def _drive_backup_bytes(service, file_id):
