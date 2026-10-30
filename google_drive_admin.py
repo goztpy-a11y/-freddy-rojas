@@ -330,6 +330,7 @@ def google_drive_nightly_backup():
 def google_drive_upload_backup():
     try:
         raw, table_count, row_count = _create_full_backup()
+        verify_backup_bytes(raw)
         credentials, service, row = _credentials_and_service()
         filename = "freddy_rojas_respaldo_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S") + ".json"
         media = MediaIoBaseUpload(BytesIO(raw), mimetype="application/json", resumable=True)
