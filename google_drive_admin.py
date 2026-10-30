@@ -22,7 +22,7 @@ from backup_admin import _create_full_backup
 
 SCOPES = [
     "openid",
-    "email",
+    "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/drive.file",
 ]
 FOLDER_NAME = "Freddy Rojas - Copias de seguridad"
