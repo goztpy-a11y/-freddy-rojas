@@ -530,7 +530,7 @@ footer{display:block!important;color:#8b99aa}
 <nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a>{% endif %}
 {% if user.role=='admin' or (allowed('inventario') and not allowed('estacion')) %}<a href="{{url_for('general_history')}}">Historial de inventario</a>{% endif %}
-{% if user.role!='admin' and (user.areas or '').split(',')|map('trim')|list == ['inventario'] %}<a href="{{url_for('admin_section',section='inventario')}}">Inventarios</a>{% endif %}
+{% if user.role!='admin' and (user.areas or '').split(',')|map('trim')|list == ['inventario'] %}<a href="{{url_for('admin_section',section='inventario')}}">Inventarios</a><a href="{{url_for('deposito_operativo')}}">Depósito Operativo</a>{% endif %}
 {% if user.role=='admin' %}
 <a href="{{url_for('configuration')}}">⚙ &nbsp; Configuración</a>
 <div class="nav-caption">ÁREAS DE TRABAJO</div>
