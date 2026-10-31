@@ -1562,3 +1562,6 @@ def _supplier_report_with_history(module):
     {% else %}<tr><td colspan="6">No hay proveedores con entregas para los filtros seleccionados.</td></tr>{% endfor %}</table></div></section></main><footer>El Toro S.A. · Informe de proveedores</footer></body></html>
     """,title="Informe completo de proveedores",rows=rows,q=q,since=since,until=until)
 app.view_functions["report_module"]=_supplier_report_with_history
+
+
+import deposito_operativo  # Inventario independiente de aceites y fluidos del Depósito Operativo.
