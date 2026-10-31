@@ -12,11 +12,7 @@ MOVEMENTS = "deposito_movimientos"
 
 app.config.setdefault("DEPOSITO_OPERATIVO_ENABLED", True)
 
-# Los registros del depósito tienen módulos propios y no se mezclan con los otros stocks.
-MODULES.update({
-    PRODUCTS: ("Productos de Depósito Operativo", "inventario", []),
-    MOVEMENTS: ("Movimientos de Depósito Operativo", "inventario", []),
-})
+# Los registros se guardan en Record con claves internas propias; no se publican como módulos genéricos.
 
 _original_allowed = app_module.allowed
 def _allowed_with_deposito(module):
