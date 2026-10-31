@@ -16,7 +16,6 @@ app.config.setdefault("DEPOSITO_OPERATIVO_ENABLED", True)
 MODULES.update({
     PRODUCTS: ("Productos de Depósito Operativo", "inventario", []),
     MOVEMENTS: ("Movimientos de Depósito Operativo", "inventario", []),
-    "deposito_operativo": ("Depósito Operativo", "inventario", []),
 })
 
 _original_allowed = app_module.allowed
@@ -168,7 +167,7 @@ if _original_admin_section:
         if section is None and args:
             section = args[0]
         if section == "inventario" and isinstance(response, str):
-            link = '<section class="card"><h2>Depósito Operativo</h2><p>Control independiente de aceites hidráulicos, fluidos de frenos, ATF y otros lubricantes.</p><a class="btn" href="/deposito-operativo">Abrir Depósito Operativo</a></section>'
-            response = response.replace("</main>", link + "</main>", 1)
+            link = '<section class="card" style="margin:16px 0"><h2>Depósito Operativo</h2><p>Inventario independiente de aceites hidráulicos, fluidos de frenos, ATF y otros lubricantes.</p><a class="btn" href="/deposito-operativo">Abrir Depósito Operativo</a></section>'
+            response = response.replace('<section class="area-grid">', link + '<section class="area-grid">', 1)
         return response
     app.view_functions["admin_section"] = _admin_section_with_deposito
