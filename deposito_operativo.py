@@ -3,7 +3,8 @@
 import json
 from decimal import Decimal, InvalidOperation
 from flask import request, redirect, url_for, flash, abort
-from app import app, db, Record, current_user, allowed, login_required, log_action, paraguay_now
+import app as app_module
+from app import app, db, Record, MODULES, current_user, login_required, log_action, paraguay_now
 from features import _data, _page
 
 PRODUCTS = "deposito_productos"
@@ -12,13 +13,13 @@ MOVEMENTS = "deposito_movimientos"
 app.config.setdefault("DEPOSITO_OPERATIVO_ENABLED", True)
 
 # Los registros del depósito tienen módulos propios y no se mezclan con los otros stocks.
-app.MODULES.update({
+MODULES.update({
     PRODUCTS: ("Productos de Depósito Operativo", "inventario", []),
     MOVEMENTS: ("Movimientos de Depósito Operativo", "inventario", []),
     "deposito_operativo": ("Depósito Operativo", "inventario", []),
 })
 
-_original_allowed = allowed
+_original_allowed = app_module.allowed
 def _allowed_with_deposito(module):
     user = current_user()
     if user and user.role == "admin":
@@ -28,7 +29,7 @@ def _allowed_with_deposito(module):
         return True
     return _original_allowed(module)
 
-app.allowed = _allowed_with_deposito
+app_module.allowed = _allowed_with_deposito
 
 def _can_deposito():
     user = current_user()
