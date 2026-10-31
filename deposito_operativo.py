@@ -20,7 +20,7 @@ def _allowed_with_deposito(module):
     if user and user.role == "admin":
         return True
     assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()} if user else set()
-    if assigned in ({"inventario"}, {"estacion"}) and module in {PRODUCTS, MOVEMENTS, "deposito_operativo"}:
+    if ("inventario" in assigned or "estacion" in assigned) and module in {PRODUCTS, MOVEMENTS, "deposito_operativo"}:
         return True
     return _original_allowed(module)
 
@@ -29,7 +29,7 @@ app_module.allowed = _allowed_with_deposito
 def _can_deposito():
     user = current_user()
     assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()} if user else set()
-    if not user or not (user.role == "admin" or assigned in ({"inventario"}, {"estacion"})):
+    if not user or not (user.role == "admin" or "inventario" in assigned or "estacion" in assigned):
         abort(403)
 
 def _products():
