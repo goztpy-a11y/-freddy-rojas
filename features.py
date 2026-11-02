@@ -1251,7 +1251,7 @@ def caja_chica():
     <div><label>Importe a transferir (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
     <div><label>Fecha</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div style="align-self:end"><button>Registrar transferencia</button></div></form></section>
-    <section class="card"><h2>Registrar gasto de caja chica</h2><form method="post" class="grid">
+    <section class="card"><h2>Registrar gasto de caja chica</h2><form method="post" class="grid" onsubmit="if(this.dataset.enviando==='1')return false;this.dataset.enviando='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Guardando...';}return true;">
     <input type="hidden" name="accion" value="gasto">
     <div><label>En qué se gastó</label><input name="detalle" required></div>
     <div><label>Monto gastado (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
