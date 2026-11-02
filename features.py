@@ -1153,6 +1153,23 @@ def caja_chica():
     _can_caja()
     if request.method == "POST":
         action=request.form.get("accion","gasto")
+        if action == "eliminar":
+            try:
+                rid=int(request.form.get("record_id",""))
+            except (ValueError,TypeError):
+                rid=0
+            rec=db.session.get(Record,rid) if rid else None
+            if not rec or rec.module!="caja_chica" or _data(rec).get("tipo")!="gasto":
+                flash("No se pudo eliminar: el movimiento no existe o no pertenece al historial de gastos de caja chica.")
+            else:
+                deleted_amount=Decimal(str(rec.amount or 0))
+                detail=_data(rec).get("detalle",rec.title)
+                log_action("eliminar movimiento de caja chica","caja_chica",rec.id,
+                    "Movimiento eliminado: "+str(detail)+"; importe "+str(deleted_amount))
+                db.session.delete(rec)
+                db.session.commit()
+                flash("Movimiento eliminado. El saldo de caja chica se recalculó automáticamente.")
+            return redirect(url_for("caja_chica",q=request.form.get("q","")))
         fecha=request.form.get("fecha", paraguay_now().strftime("%Y-%m-%d")).strip()
         medio=request.form.get("medio","").strip()
         try:
@@ -1229,8 +1246,8 @@ def caja_chica():
     <div><label>Clasificación</label><select name="clasificacion" required><option value="caja_chica">Caja chica (no sumar a Gastos)</option><option value="gastos">Gastos (sumar al resumen de Gastos)</option></select></div>
     <div style="align-self:end"><button>Guardar gasto</button></div></form></section>
     <section class="card"><h2>Historial de movimientos</h2><form class="actions"><input name="q" value="{{q}}" placeholder="Buscar descripción o monto"><button>Buscar</button><button type="button" onclick="window.print()">Imprimir</button></form>
-    <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th><th>Ver</th></tr>
-    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td></tr>{% endfor %}</table></section>
+    <table><tr><th>Fecha</th><th>Movimiento</th><th>Descripción</th><th>Medio</th><th>Clasificación</th><th>Monto</th><th>Ver</th><th>Eliminar</th></tr>
+    {% for r in shown %}{% set d=decode(r) %}<tr><td>{{d.get('fecha')}} · {{local_time(r.created_at).strftime('%H:%M:%S')}}</td><td>{{'Transferencia desde banco' if d.get('origen')=='transferencia_bancaria' else ('Actualización de saldo' if d.get('tipo')=='saldo' else 'Gasto')}}</td><td>{{d.get('detalle','—')}}</td><td>{{d.get('medio','—')}}</td><td>{% if d.get('origen')=='transferencia_bancaria' %}Transferencia interna{% elif d.get('tipo')=='saldo' %}Saldo disponible{% elif d.get('clasificacion')=='gastos' %}Gastos{% else %}Caja chica{% endif %}</td><td>{{d.get('importe_transferencia') if d.get('origen')=='transferencia_bancaria' else (d.get('saldo') if d.get('tipo')=='saldo' else r.amount)}}</td><td><a class="btn" href="{{url_for('view_record',rid=r.id)}}">Ver detalle</a></td><td><form method="post" action="{{url_for('caja_chica')}}" onsubmit="return confirm('¿Seguro que querés eliminar este movimiento? El saldo se recalculará automáticamente.');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="record_id" value="{{r.id}}"><input type="hidden" name="q" value="{{q}}"><button class="btn" type="submit">Eliminar</button></form></td></tr>{% endfor %}</table></section>
     """,balance=balance,shown=shown,q=q,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
 
