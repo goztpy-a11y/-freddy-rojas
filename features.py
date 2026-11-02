@@ -1,7 +1,7 @@
 # Funciones ampliadas de finanzas, proveedores y flota para El Toro S.A.
 import json
 from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import request, redirect, url_for, render_template_string, flash, abort
 from app import app, db, Record, CompanyAccount, MODULES, current_user, allowed, login_required, admin_required, log_action, BASE, paraguay_now, local_time
 
@@ -1093,6 +1093,20 @@ def ventas_caja():
             amount=Decimal(request.form.get("importe","").strip().replace(",", ".")).quantize(Decimal("0.01"))
             if not cliente or not concepto or not fecha or not hora or len(hora)!=5 or hora[2] != ":" or amount<=0 or medio not in ("Efectivo","Transferencia"):
                 raise InvalidOperation()
+            # Protección contra doble envío: rechaza la misma venta enviada otra vez
+            # dentro de 45 segundos, incluso si el navegador reintenta el POST.
+            cutoff=datetime.utcnow()-timedelta(seconds=45)
+            recent=Record.query.filter(Record.module=="ventas_caja",Record.created_at>=cutoff).order_by(Record.created_at.desc()).all()
+            duplicate=next((r for r in recent
+                if _data(r).get("cliente","").strip().casefold()==cliente.casefold()
+                and _data(r).get("concepto","").strip().casefold()==concepto.casefold()
+                and _data(r).get("fecha")==fecha
+                and _data(r).get("hora")==hora
+                and _data(r).get("medio")==medio
+                and Decimal(str(r.amount or 0))==amount),None)
+            if duplicate:
+                flash("Esta venta ya fue registrada hace unos segundos. No se volvió a guardar ni se modificó ningún saldo.")
+                return redirect(url_for("ventas_caja"))
             account=None
             if medio=="Transferencia":
                 # Las ventas por transferencia ingresan siempre a la cuenta principal activa.
@@ -1125,7 +1139,7 @@ def ventas_caja():
     main_account=accounts[0] if accounts else None
     balance=_caja_chica_balance()
     return _page("Registrar venta", """
-    <section class="card"><h2>Registrar venta</h2><form method="post" class="grid">
+    <section class="card"><h2>Registrar venta</h2><form method="post" class="grid" onsubmit="const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Guardando...';}return true;">
     <div><label>Cliente</label><input name="cliente" required></div><div><label>Concepto de la venta</label><input name="concepto" required></div>
     <div><label>Importe (Gs.)</label><input name="importe" type="number" min="0.01" step="0.01" required></div>
     <div><label>Fecha de la venta</label><input name="fecha" type="date" value="{{today}}" required></div><div><label>Hora de la venta</label><input name="hora" type="time" value="{{now_time}}" required></div>
