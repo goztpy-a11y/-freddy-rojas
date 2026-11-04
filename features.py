@@ -697,7 +697,7 @@ def combustible_stock():
     <div><label>Fecha de carga</label><input name="fecha" type="date" value="{{today}}" required></div>
     <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" max="{{stock}}" step="0.01" required></div>
     <div style="align-self:end"><button type="submit">Guardar carga</button></div></form></section>
-    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Camión o maquinaria</th><th>Litros cargados</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{d.get("fecha", local_time(r.created_at).strftime("%Y-%m-%d"))}} · {{local_time(r.created_at).strftime("%H:%M:%S")}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
+    <section class="card"><h2>Historial de cargas</h2>{% if charges %}<div style="overflow-x:auto"><table><thead><tr><th>Fecha y hora</th><th>Chofer</th><th>Camión o maquinaria</th><th>Litros cargados</th><th>Acciones</th></tr></thead><tbody>{% for r in charges %}{% set d=decode(r) %}<tr><td>{{d.get("fecha", local_time(r.created_at).strftime("%Y-%m-%d"))}} · {{local_time(r.created_at).strftime("%H:%M:%S")}}</td><td>{{d.get('chofer','No registrado')}}</td><td>{{d.get('camion','')}}</td><td>{{d.get('litros')}} L</td><td><a class="btn" href="{{url_for('editar_carga_combustible',rid=r.id)}}">Editar</a> <form method="post" action="{{url_for('eliminar_carga_combustible',rid=r.id)}}" style="display:inline" onsubmit="return confirm('¿Eliminar esta carga de combustible? El stock se recalculará automáticamente.');"><button class="btn" type="submit">Eliminar</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Todavía no hay cargas de combustible registradas.</p>{% endif %}</section>
     <section class="card"><h2>Historial de ventas de combustible</h2><div style="overflow-x:auto"><table><tr><th>Fecha</th><th>Cliente</th><th>Litros</th><th>Precio por litro</th><th>Total</th><th>Medio de pago</th></tr>{% for r in sales %}{% set d=decode(r) %}<tr><td>{{d.get("fecha")}}</td><td>{{d.get("cliente")}}</td><td>{{d.get("litros")}} L</td><td>Gs. {{d.get("precio_litro")}}</td><td>Gs. {{r.amount}}</td><td>{{d.get("medio")}}</td></tr>{% else %}<tr><td colspan="6">Todavía no hay ventas registradas.</td></tr>{% endfor %}</table></div></section>
     """,stock=stock,charges=charges,sales=sales,today=paraguay_now().strftime("%Y-%m-%d"),decode=_data)
 
@@ -717,6 +717,61 @@ def cargar_combustible():
     except (InvalidOperation,ValueError):
         flash("No se pudo cargar: verificá el chofer, la chapa, los litros y el stock disponible.")
     return redirect(url_for("combustible_stock"))
+
+@app.route("/combustible-stock/carga/<int:rid>/editar",methods=["GET","POST"])
+@login_required
+def editar_carga_combustible(rid):
+    _can_area("estacion")
+    rec=Record.query.get_or_404(rid)
+    if rec.module not in ("combustible_camion","combustible"):
+        abort(404)
+    data=_data(rec)
+    if request.method=="POST":
+        try:
+            chofer=request.form.get("chofer","").strip()
+            camion=request.form.get("camion","").strip()
+            fecha=request.form.get("fecha","").strip()
+            litros=Decimal(request.form.get("litros","").replace(",","."))
+            if not chofer or not camion or not fecha or litros<=0:
+                raise InvalidOperation()
+            data.update({"chofer":chofer,"camion":camion,"fecha":fecha,"litros":str(litros)})
+            rec.data=json.dumps(data,ensure_ascii=False)
+            rec.title="Carga combustible · "+camion
+            rec.updated_at=paraguay_now()
+            log_action("editar carga de combustible",rec.module,rec.id,"Carga corregida · "+camion+" · "+str(litros)+" L")
+            db.session.commit()
+            flash("Carga actualizada. El stock disponible se recalculó automáticamente.")
+            return redirect(url_for("combustible_stock"))
+        except (InvalidOperation,ValueError,TypeError):
+            db.session.rollback()
+            flash("No se guardaron los cambios. Revisá fecha, chofer, camión y litros.")
+            return redirect(url_for("editar_carga_combustible",rid=rid))
+    return _page("Editar carga de combustible", """
+    <section class="card"><h2>Editar carga de combustible</h2><form method="post" class="grid">
+    <div><label>Nombre del chofer</label><input name="chofer" value="{{data.get('chofer','')}}" required maxlength="120"></div>
+    <div><label>Camión o maquinaria</label><input name="camion" value="{{data.get('camion','')}}" required maxlength="80"></div>
+    <div><label>Fecha de carga</label><input name="fecha" type="date" value="{{data.get('fecha','')}}" required></div>
+    <div><label>Litros cargados</label><input name="litros" type="number" min="0.01" step="0.01" value="{{data.get('litros','')}}" required></div>
+    <div><button class="btn" type="submit">Guardar cambios</button> <a class="btn" href="{{url_for('combustible_stock')}}">Cancelar</a></div>
+    </form></section>
+    """,data=data)
+
+
+@app.post("/combustible-stock/carga/<int:rid>/eliminar")
+@login_required
+def eliminar_carga_combustible(rid):
+    _can_area("estacion")
+    rec=Record.query.get_or_404(rid)
+    if rec.module not in ("combustible_camion","combustible"):
+        abort(404)
+    title=rec.title
+    module=rec.module
+    db.session.delete(rec)
+    log_action("eliminar carga de combustible",module,rid,"Carga eliminada desde Estación: "+title+" · stock recalculado")
+    db.session.commit()
+    flash("Carga eliminada. El stock disponible se recalculó automáticamente.")
+    return redirect(url_for("combustible_stock"))
+
 
 @app.route("/mantenimiento",methods=["GET","POST"])
 @login_required
