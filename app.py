@@ -2169,24 +2169,26 @@ def general_history():
     available=[key for key in MODULES if allowed(key)]
     if current_user().role=="auditoria":
         available=[key for key in dict.fromkeys(list(MODULES.keys())+["tickets_entrada","solicitudes","cheques","cuentas_pagar","cuentas_cobrar"]) if key!="proveedores"]
-    q=request.args.get("q","").strip().casefold(); sector=request.args.get("sector",""); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip()
+    q=request.args.get("q","").strip().casefold(); sector=request.args.get("sector",""); since=request.args.get("desde",""); until=request.args.get("hasta",""); amount_filter=request.args.get("monto","").strip(); month=request.args.get("mes",paraguay_now().strftime("%Y-%m"))
     items=Record.query.order_by(Record.created_at.desc()).all(); results=[]
     for r in items:
         if r.module not in available: continue
         d=json.loads(r.data or "{}"); hay=(r.title+" "+r.module+" "+r.status+" "+str(r.amount)+" "+r.data).casefold()
+        record_date=str(d.get("fecha") or local_time(r.created_at).strftime("%Y-%m-%d"))[:10]
         if sector and r.module!=sector: continue
         if q and q not in hay: continue
-        if since and local_time(r.created_at).strftime("%Y-%m-%d")<since: continue
-        if until and local_time(r.created_at).strftime("%Y-%m-%d")>until: continue
+        if record_date[:7]!=month: continue
+        if since and record_date<since: continue
+        if until and record_date>until: continue
         if amount_filter and amount_filter not in str(r.amount): continue
         results.append((r,d))
     sectors=[(k,MODULES[k][0]) for k in available]
     return render_template_string(BASE+"""
     <section class="card"><h2>Historial general</h2><form method="get" class="grid"><div><label>Buscar por cualquier información</label><input name="q" value="{{q}}"></div>
     <div><label>Sector</label><select name="sector"><option value="">Todos los sectores</option>{% for k,v in sectors %}<option value="{{k}}" {% if sector==k %}selected{% endif %}>{{v}}</option>{% endfor %}</select></div>
-    <div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
+    <div><label>Mes</label><input type="month" name="mes" value="{{month}}"></div><div><label>Desde</label><input type="date" name="desde" value="{{since}}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{until}}"></div><div><label>Monto</label><input name="monto" value="{{amount_filter}}"></div>
     <div style="align-self:end"><button class="btn">Buscar</button> <a class="btn" href="{{url_for('general_history')}}">Limpiar</a></div></form><p><button class="btn" type="button" onclick="window.print()">Imprimir historial</button></p>
-    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
+    <table><tr><th>Fecha/hora</th><th>Sector</th><th>Operación</th><th>Estado</th><th>Monto</th><th>Imprimir</th></tr>{% for r,d in results %}<tr><td>{{local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{MODULES.get(r.module,(r.module,))[0]}}</td><td>{{r.title}}</td><td>{{r.status}}</td><td>{{r.amount}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Imprimir</a></td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title="Historial general",q=q,sector=sector,month=month,since=since,until=until,amount_filter=amount_filter,sectors=sectors,results=results)
 
 @app.get("/imprimir/<int:rid>")
 @login_required
