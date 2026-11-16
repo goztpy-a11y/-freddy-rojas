@@ -11,6 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app import app, db, BankSheetEntry, CompanyAccount, Record, BASE, current_user, log_action, paraguay_now, local_time
 
+BANK_ACCOUNT_LIMIT = 8
+
 MONTHS = ('Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre')
 LEGACY_MODULES = ('pagos_diarios', 'pagos_cuentas', 'cobros_cuentas', 'gastos', 'ventas_caja', 'caja_chica', 'pagos_cliente_admin')
 
@@ -50,7 +52,7 @@ def ensure_accounts():
     if db.engine.dialect.name == 'postgresql':
         db.session.execute(text('SELECT pg_advisory_xact_lock(714032605)'))
     accounts = CompanyAccount.query.filter_by(active=True).order_by(CompanyAccount.id).all()
-    for index in range(len(accounts), 5):
+    for index in range(len(accounts), BANK_ACCOUNT_LIMIT):
         db.session.add(CompanyAccount(name='Banco ' + str(index + 1), bank='', number='', currency='PYG',
                                      opening_balance=0, balance=0, opening_balance_usd=0, balance_usd=0))
     db.session.commit()
@@ -293,7 +295,7 @@ def accounts_page():
                   today=paraguay_now().strftime('%Y-%m-%d') if month == current else month + '-01',
                   url=url_for('module_page', module='cuentas_empresa', month=month, currency=currency))
     payload = json.dumps(config, ensure_ascii=False).replace('<', '\\u003c')
-    body = '''<link rel="stylesheet" href="/static/bank_sheet.css?v=fr-five-1">
+    body = '''<link rel="stylesheet" href="/static/bank_sheet.css?v=fr-eight-1">
     <section class="bank-sheet-header"><div><h2>Cuentas bancarias</h2></div><span id="bank-save-summary" role="status" aria-live="polite">Guardado automático</span></section>
     <section class="bank-month-history"><form method="get">
     <label for="bank-month">Historial por mes</label><select id="bank-month" name="month">{% for m in months %}<option value="{{m}}" {{'selected' if m==month else ''}}>{{month_name(m)}}</option>{% endfor %}</select>

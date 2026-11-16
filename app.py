@@ -986,13 +986,13 @@ def module_page(module):
         <section class="card"><h2>Listado de materiales</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
         <table><tr><th>Material</th></tr>{% for m in items %}<tr><td>{{m.name}}</td></tr>{% else %}<tr><td>Todavía no hay materiales registrados.</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items)
     if module == "cuentas_empresa":
-        from bank_sheet import accounts_page
+        from bank_sheet import accounts_page, BANK_ACCOUNT_LIMIT
         if request.method == "GET" or request.is_json or request.form.get("action"):
             return accounts_page()
         if request.method == "POST":
             try:
-                if CompanyAccount.query.filter_by(active=True).count() >= 5:
-                    flash("Ya están disponibles los cinco bancos. Podés editar sus nombres en la planilla.")
+                if CompanyAccount.query.filter_by(active=True).count() >= BANK_ACCOUNT_LIMIT:
+                    flash("Ya están disponibles los ocho bancos. Podés editar sus nombres en la planilla.")
                     return redirect(url_for("module_page", module=module))
                 name=request.form.get("nombre","").strip()
                 if not name: raise InvalidOperation()

@@ -51,16 +51,37 @@ class BankSheetTests(unittest.TestCase):
         with app.app_context():
             return [(a.id, a.balance, a.balance_usd) for a in CompanyAccount.query.order_by(CompanyAccount.id)]
 
-    def test_five_banks_preserve_original_and_do_not_duplicate(self):
+    def test_eight_banks_preserve_original_and_do_not_duplicate(self):
         config = self.load()
-        self.assertEqual(len(config['accounts']), 5)
+        self.assertEqual(len(config['accounts']), 8)
         self.assertEqual(config['accounts'][0]['name'], 'Cuenta existente')
         self.assertEqual(config['accounts'][0]['balance'], '10.000.000')
-        self.assertEqual([a['name'] for a in config['accounts'][1:]], ['Banco 2', 'Banco 3', 'Banco 4', 'Banco 5'])
+        self.assertEqual([a['name'] for a in config['accounts'][1:]], ['Banco ' + str(i) for i in range(2,9)])
         self.assertEqual(self.balances()[0][2], Decimal('100.50'))
         self.assertEqual(self.api('rename_account', name='Nuevo banco', expected_name='Cuenta existente').status_code, 200)
         self.assertEqual(self.load()['accounts'][0]['name'], 'Nuevo banco')
-        self.assertEqual(len(self.load()['accounts']), 5)
+        self.assertEqual(len(self.load()['accounts']), 8)
+
+    def test_expanding_five_existing_banks_preserves_names_balances_and_rows(self):
+        saved = self.row(amount='-1.000').get_json()['entry']
+        with app.app_context():
+            accounts = CompanyAccount.query.order_by(CompanyAccount.id).all()
+            for account in accounts[5:]:
+                db.session.delete(account)
+            for index, account in enumerate(accounts[:5]):
+                account.name = 'Mi banco ' + str(index + 1)
+                account.balance += index * 1000
+            db.session.commit()
+            original = [(a.id,a.name,a.balance,a.balance_usd) for a in accounts[:5]]
+        config = self.load()
+        self.assertEqual(len(config['accounts']),8)
+        with app.app_context():
+            accounts = CompanyAccount.query.order_by(CompanyAccount.id).all()
+            self.assertEqual([(a.id,a.name,a.balance,a.balance_usd) for a in accounts[:5]],original)
+            self.assertEqual([a.name for a in accounts[5:]],['Banco 6','Banco 7','Banco 8'])
+            self.assertTrue(all(a.balance == 0 and a.balance_usd == 0 for a in accounts[5:]))
+            self.assertEqual(BankSheetEntry.query.filter_by(entry_key=saved['key']).count(),1)
+        self.assertEqual(len(self.load()['accounts']),8)
 
     def test_negative_rows_edit_idempotency_and_stale_version(self):
         response = self.row()
@@ -102,7 +123,7 @@ class BankSheetTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(self.api('transfer', **args).status_code, 200)
         balances = self.balances()
-        self.assertEqual(balances[0][1], Decimal('9600000'))
+        self.assertEqual(balances[0][1], Decimal('9300000'))
         self.assertEqual(sum(b[1] for b in balances), Decimal('10000000'))
         sheets = self.load()['accounts']
         self.assertTrue(all(len(s['entries']) == 1 for s in sheets[1:]))
@@ -110,7 +131,7 @@ class BankSheetTests(unittest.TestCase):
         response = self.api('edit_transfer', key=entry['key'], version=entry['version'], amount='150.000', description='Editada')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(sum(b[1] for b in self.balances()), Decimal('10000000'))
-        self.assertEqual(self.balances()[0][1], Decimal('9550000'))
+        self.assertEqual(self.balances()[0][1], Decimal('9250000'))
         # Gastar el saldo de destino impide reducir la transferencia; todo se revierte.
         dest = entry['destination_account_id']
         self.api('save_row', account_id=dest, key=str(uuid4()), version=0, date='2026-11-16', description='Salida', amount='-150.000')
