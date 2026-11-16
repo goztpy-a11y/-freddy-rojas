@@ -1,9 +1,10 @@
 import json
 from decimal import Decimal, InvalidOperation
 from flask import request, redirect, url_for, flash
-from app import app, db, Record, Material, CompanyAccount, current_user, log_action
+from app import app, db, Record, Material, CompanyAccount, current_user, log_action, login_required
 from features import _rows, _data, _can_caja
 
+@login_required
 def crear_pago_diario_materiales():
     _can_caja()
     source_ticket_id=request.form.get("source_ticket_id","").strip()

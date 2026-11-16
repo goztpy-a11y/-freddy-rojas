@@ -3,11 +3,12 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from flask import request, redirect, url_for, flash, abort
-from app import app, db, Record, Material, CompanyAccount, MODULES, current_user, log_action, paraguay_now, local_time
+from app import app, db, Record, Material, CompanyAccount, MODULES, current_user, log_action, paraguay_now, local_time, login_required
 from features import _rows, _data, _can_caja, _page
 
 MODULES["tickets_entrada"] = ("Tickets registrados", "caja", [])
 
+@login_required
 def registrar_ticket():
     _can_caja()
     materials=Material.query.order_by(Material.name).all()
@@ -108,6 +109,7 @@ def registrar_ticket():
     {% for r,d,number,person in history %}<tr><td>{{d.get('fecha') or local_time(r.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td>{{number}}</td><td>{{person}}</td><td>{% for line in d.get('materiales',[]) %}{{line.get('material','—')}} · {{line.get('kg',line.get('cantidad',''))}} kg · Gs. {{line.get('importe',line.get('total',''))}}<br>{% endfor %}</td><td>Gs. {{r.amount or d.get('total','0')}}</td><td>{{r.status}}</td><td><a class="btn" href="{{url_for('print_record',rid=r.id)}}">Ver ticket</a></td></tr>{% else %}<tr><td colspan="7">No hay tickets registrados que coincidan con la búsqueda.</td></tr>{% endfor %}</table></div></section>
     """,today=today,materials=materials,vendors=vendors,material_data=[{"id":m.id,"name":m.name} for m in materials],history=history,q=q,local_time=local_time)
 
+@login_required
 def pagos_diarios():
     _can_caja()
     # Mostrar cargas creadas tanto por Registrar ticket como por el formulario anterior Registrar carga.
@@ -183,6 +185,7 @@ def pagos_diarios():
     {% for d in legacy_rows %}<tr><td>{{d.get('fecha','')}}</td><td>{{d.get('ticket','')}}</td><td>{{d.get('persona','')}}</td><td>{{d.get('total','')}}</td><td>{{d.get('importe')}}</td><td>{{d.get('pagado')}}</td><td>{{d.get('saldo')}}</td><td>{{d.get('estado')}}</td><td><form method="post" action="{{url_for('eliminar_pago_ticket',pid=d.id)}}" onsubmit="return confirm('¿Eliminar este pago y devolver el importe a la cuenta bancaria de origen?');"><button class="danger">Eliminar</button></form></td></tr>{% else %}<tr><td colspan="9">No hay pagos anteriores.</td></tr>{% endfor %}</table></section>
     """,rows=rows,legacy_rows=legacy_rows,payment_history=payment_history,q=q,month=month,accounts=accounts,local_time=local_time)
 
+@login_required
 def pagar_ticket(rid):
     _can_caja()
     ticket=Record.query.filter_by(id=rid).with_for_update().populate_existing().first_or_404()
@@ -240,6 +243,7 @@ def pagar_ticket(rid):
 app.add_url_rule("/registrar-ticket", endpoint="registrar_ticket", view_func=registrar_ticket, methods=["GET","POST"])
 app.add_url_rule("/pagos", endpoint="pagos", view_func=pagos_diarios, methods=["GET"])
 app.add_url_rule("/pagos/<int:rid>/pagar", endpoint="pagar_ticket", view_func=pagar_ticket, methods=["POST"])
+@login_required
 def eliminar_pago_ticket(pid):
     _can_caja()
     payment=db.get_or_404(Record,pid)

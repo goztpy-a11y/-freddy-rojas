@@ -106,3 +106,35 @@ class DailyPaymentBankTests(unittest.TestCase):
             ticket=db.session.get(Record,self.rid)
             self.assertEqual(ticket.status,'Pendiente')
             self.assertEqual(Decimal(json.loads(ticket.data)['saldo']),Decimal('100000'))
+
+    def test_expired_session_redirects_payment_pages_to_login(self):
+        with self.client.session_transaction() as session:
+            session.clear()
+        for path in ('/pagos-diarios','/pagos','/registrar-ticket'):
+            with self.subTest(path=path):
+                response=self.client.get(path)
+                self.assertEqual(response.status_code,302)
+                self.assertTrue(response.location.startswith('/login?next='),response.location)
+        with app.app_context():
+            self.assertEqual(Record.query.filter_by(module='pagos_diarios').count(),0)
+            from werkzeug.security import generate_password_hash
+            db.session.get(User,self.uid).password_hash=generate_password_hash('session-test-password')
+            db.session.commit()
+        login_url=self.client.get('/pagos-diarios').location
+        response=self.client.post(login_url,data={'username':'caja-test','password':'session-test-password'},follow_redirects=True)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.request.path,'/pagos-diarios')
+        self.assertIn(b'Banco de origen',response.data)
+
+    def test_expired_session_cannot_submit_or_remove_payments(self):
+        before=self.balances()
+        with self.client.session_transaction() as session:
+            session.clear()
+        for path in (f'/pagos/{self.rid}/pagar',f'/pagos/{self.rid}/eliminar','/pagos-diarios/crear','/registrar-ticket'):
+            with self.subTest(path=path):
+                response=self.client.post(path,data={'account_id':self.ids[0],'importe':'1000'})
+                self.assertEqual(response.status_code,302)
+                self.assertTrue(response.location.startswith('/login?next='),response.location)
+        self.assertEqual(self.balances(),before)
+        with app.app_context():
+            self.assertEqual(Record.query.filter_by(module='pagos_diarios').count(),0)
