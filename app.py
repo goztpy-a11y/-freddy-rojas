@@ -150,6 +150,22 @@ class Record(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+class BankSheetEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("company_account.id"), nullable=False, index=True)
+    entry_key = db.Column(db.String(80), nullable=False, unique=True)
+    currency = db.Column(db.String(3), nullable=False, default="PYG")
+    entry_date = db.Column(db.String(10), nullable=False)
+    description = db.Column(db.String(240), nullable=False)
+    amount = db.Column(db.Numeric(18, 2), nullable=False)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    kind = db.Column(db.String(20), nullable=False, default="manual")
+    counterpart_id = db.Column(db.Integer, db.ForeignKey("company_account.id"))
+    transfer_key = db.Column(db.String(80), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=paraguay_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=paraguay_now)
+
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
@@ -946,8 +962,14 @@ def module_page(module):
         <section class="card"><h2>Listado de materiales</h2><button class="btn" type="button" onclick="window.print()">Imprimir listado</button>
         <table><tr><th>Material</th></tr>{% for m in items %}<tr><td>{{m.name}}</td></tr>{% else %}<tr><td>Todavía no hay materiales registrados.</td></tr>{% endfor %}</table></section></main><footer>El Toro S.A.</footer></body></html>""",title=title,items=items)
     if module == "cuentas_empresa":
+        from bank_sheet import accounts_page
+        if request.method == "GET" or request.is_json or request.form.get("action"):
+            return accounts_page()
         if request.method == "POST":
             try:
+                if CompanyAccount.query.filter_by(active=True).count() >= 5:
+                    flash("Ya están disponibles los cinco bancos. Podés editar sus nombres en la planilla.")
+                    return redirect(url_for("module_page", module=module))
                 name=request.form.get("nombre","").strip()
                 if not name: raise InvalidOperation()
                 bal_pyg=Decimal((request.form.get("saldo_inicial_pyg","0") or "0").strip().replace(",", "."))
@@ -2332,3 +2354,4 @@ import google_drive_admin  # Conexión segura con Google Drive para copias de Fr
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT","10000")))
+
