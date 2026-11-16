@@ -249,6 +249,8 @@ def allowed(module):
     if user.role == "banco":
         return module == "cuentas_empresa"
     assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()}
+    if module == "cuentas_empresa" and "caja" in assigned:
+        return True
     # La cuenta dedicada exclusivamente a Inventario ve solo los tres inventarios
     # y sus historiales. No puede usar ventas ni registrar servicios de gomería.
     inventory_only_modules = {"inventario", "repuestos", "movimientos_stock",
@@ -699,6 +701,7 @@ def health():
         return {
             "status": "ok",
             "app": "freddy-rojas",
+            "release": "2026.11.16-caja-banks",
             "database": "connected" if is_postgres else "demo-sqlite",
             "read_only_check": "passed"
         }, 200
@@ -839,6 +842,8 @@ def admin_section(section):
         assigned = {area.strip() for area in (current_user().areas or "").split(",") if area.strip()}
         if section == "auditoria" and (current_user().role == "auditoria" or allowed("auditoria")):
             pass
+        elif section == "caja" and allowed("caja"):
+            pass
         elif section != "inventario" or assigned != {"inventario"}:
             abort(403)
     groups = {
@@ -853,7 +858,8 @@ def admin_section(section):
         ("Fletes", url_for("fletes"), "Control de fletes"),
         ("Solicitudes de pago", url_for("module_page",module="solicitudes"), "Solicitudes para autorización"),
         ("Gastos", url_for("module_page",module="gastos"), "Gastos de la empresa"),
-        ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica")]),
+        ("Caja chica", url_for("caja_chica"), "Saldo disponible y movimientos de caja chica"),
+        ("Cuentas bancarias · 8 bancos", url_for("module_page",module="cuentas_empresa"), "Ver saldos, movimientos, historial y transferencias de todos los bancos")]),
       "estacion": ("Estación de servicio", "CONTROL DE COMBUSTIBLE", "Stock disponible, carga por chofer y chapa, e historial con fecha y hora.", [
         ("Stock e historial de cargas", url_for("combustible_stock"), "Consultar stock y registrar cargas")]),
       "gomeria": ("Gomería", "MANTENIMIENTO DE NEUMÁTICOS", "Historial por camión, registro de trabajos e inventario de materiales.", [

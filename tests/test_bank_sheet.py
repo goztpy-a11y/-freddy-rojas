@@ -172,7 +172,7 @@ class BankSheetTests(unittest.TestCase):
         self.assertEqual(self.api('save_row', account_id=other, key=saved['key'], version=1, date='2026-11-16', description='Wrong', amount='2.000').status_code, 400)
         self.assertEqual(self.api('delete_row', key=saved['key'], version=1).status_code, 400)
         with app.app_context():
-            user = User(username='caja-test', password_hash='unused', role='caja', areas='caja')
+            user = User(username='estacion-test', password_hash='unused', role='estacion', areas='estacion')
             db.session.add(user); db.session.commit(); uid = user.id
         with self.client.session_transaction() as sess:
             sess['uid'] = uid
