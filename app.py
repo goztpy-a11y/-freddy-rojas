@@ -42,7 +42,7 @@ db = SQLAlchemy(app)
 AREAS = {
  "admin": "Administración", "caja": "Caja", "tesoreria": "Tesorería",
  "estacion": "Estación de servicio", "gomeria": "Gomería",
- "inventario": "Inventario", "auditoria": "Auditoría"
+ "inventario": "Inventario", "auditoria": "Auditoría", "banco": "Banco"
 }
 MODULES = {
  "clientes": ("Proveedores", "caja", [
@@ -246,6 +246,8 @@ def allowed(module):
         return False
     if user.role == "admin":
         return True
+    if user.role == "banco":
+        return module == "cuentas_empresa"
     assigned = {area.strip() for area in (user.areas or "").split(",") if area.strip()}
     # La cuenta dedicada exclusivamente a Inventario ve solo los tres inventarios
     # y sus historiales. No puede usar ventas ni registrar servicios de gomería.
@@ -257,6 +259,26 @@ def allowed(module):
         return True
     required_area = MODULES.get(module, (None, module))[1]
     return required_area in assigned
+
+@app.before_request
+def restrict_bank_user():
+    """El rol Banco solo puede operar la planilla y consultar su historial."""
+    user = current_user()
+    if not user or user.role != "banco":
+        return None
+    if not user.active:
+        session.clear()
+        return redirect(url_for("login"))
+    if request.endpoint in ("index", "login"):
+        return redirect(url_for("module_page", module="cuentas_empresa"))
+    if request.endpoint == "logout":
+        return None
+    if request.endpoint == "static" and (request.view_args or {}).get("filename") in ("bank_sheet.js", "bank_sheet.css"):
+        return None
+    if request.endpoint == "module_page" and (request.view_args or {}).get("module") == "cuentas_empresa":
+        return None
+    abort(403)
+
 
 def login_required(fn):
     @wraps(fn)
@@ -543,7 +565,7 @@ footer{display:block!important;color:#8b99aa}
 </style></head><body><header><div><strong>El Toro S.A.</strong><div class="small">Plataforma de gestión empresarial</div></div>
 <div>{% if user %}<span>{{ user.username }} · {{ AREAS.get(user.role,user.role) }}</span> · <button class="print-page" type="button" onclick="window.print()">Imprimir</button> · <a href="{{ url_for('logout') }}">Cerrar sesión</a>{% endif %}</div></header>
 {% if user %}<aside class="sidebar"><div class="sidebar-brand"><div class="brand-mark">ET</div><div class="brand-copy"><strong>{{ company_settings.get('company_name', 'EL TORO S.A.') }}</strong><span>GESTIÓN EMPRESARIAL</span></div></div>
-<nav><a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
+<nav>{% if user.role=='banco' %}<a href="{{url_for('module_page',module='cuentas_empresa')}}">Cuenta bancaria</a>{% else %}<a href="{{url_for('index')}}">⌂ &nbsp; Panel principal</a>
 {% if user.role=='admin' or allowed('caja') or allowed('tesoreria') or allowed('estacion') or allowed('gomeria') or allowed('auditoria') %}<a href="{{url_for('reports')}}">Informes</a>{% endif %}
 {% if user.role=='admin' or (allowed('inventario') and not allowed('estacion')) %}<a href="{{url_for('general_history')}}">Historial de inventario</a>{% endif %}
 {% if user.role!='admin' and (user.areas or '').split(',')|map('trim')|list == ['inventario'] %}<a href="{{url_for('admin_section',section='inventario')}}">Inventarios</a><a href="{{url_for('deposito_operativo')}}">Depósito Operativo</a>{% endif %}
@@ -563,7 +585,7 @@ footer{display:block!important;color:#8b99aa}
 {% if user.role=='admin' %}<a href="{{url_for('users')}}">Usuarios y permisos</a><a href="{{url_for('access_report')}}">Informe de accesos</a><a href="{{url_for('backup_export')}}">Exportar respaldo</a><a href="{{url_for('change_password')}}">Mi contraseña</a>{% endif %}
 {% endif %}
 {% if user.role!='admin' and allowed('tesoreria') %}<a href="{{url_for('approvals')}}">Autorizaciones y pagos autorizados</a>{% endif %}
-</nav></aside>{% endif %}
+{% endif %}</nav></aside>{% endif %}
 <main>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 <script id="FR-MONEY-DISPLAY-FORMAT-V1">
 (function(){
@@ -698,6 +720,8 @@ def login():
             session.clear(); session["uid"] = u.id
             log_action("inicio de sesión","usuarios",u.id)
             db.session.commit()
+            if u.role == "banco":
+                return redirect(url_for("module_page", module="cuentas_empresa"))
             return redirect(request.args.get("next") or url_for("index"))
         flash("Usuario o contraseña incorrectos.")
     return render_template_string(BASE + """
@@ -1928,16 +1952,16 @@ def users():
         elif User.query.filter_by(username=username).first():
             flash("Ese usuario ya existe.")
         else:
-            areas=[a for a in dict.fromkeys(areas+[role]) if a in AREAS and a!="admin"]
+            areas=["banco"] if role=="banco" else [a for a in dict.fromkeys(areas+[role]) if a in AREAS and a not in ("admin", "banco")]
             u=User(username=username,password_hash=generate_password_hash(password),role=role,areas=",".join(areas))
             db.session.add(u); db.session.flush(); log_action("crear usuario","usuarios",u.id,f"{username}; rol {role}; áreas {u.areas}")
             db.session.commit(); flash("Usuario creado."); return redirect(url_for("users"))
     items=User.query.order_by(User.username).all()
     return render_template_string(BASE+"""
     <section class="card"><h2>Usuarios y permisos</h2>
-    <form method="post" class="grid"><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 4 caracteres)</label><input type="password" name="password" minlength="4" required></div>
-    <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k != 'admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
-    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{local_time(u.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer></body></html>""",title="Usuarios",items=items)
+    <form method="post" class="grid" data-user-permissions><div><label>Usuario</label><input name="username" required></div><div><label>Contraseña inicial (mínimo 4 caracteres)</label><input type="password" name="password" minlength="4" required></div>
+    <div><label>Área / rol principal</label><select name="role">{% for k,v in AREAS.items() if k != 'admin' %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></div><div data-extra-areas><label>Áreas adicionales</label>{% for k,v in AREAS.items() if k not in ['admin','banco'] %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}"> {{v}}</label>{% endfor %}</div><div style="align-self:end"><button class="btn">Crear usuario</button></div></form></section>
+    <section class="card"><h2>Usuarios existentes</h2><table><tr><th>Usuario</th><th>Rol</th><th>Áreas asignadas</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr>{% for u in items %}<tr><td>{{u.username}}</td><td>{{AREAS.get(u.role,u.role)}}</td><td>{% for a in (u.areas or '').split(',') if a %}{{AREAS.get(a,a)}}{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{'Sí' if u.active else 'No'}}</td><td>{{local_time(u.created_at).strftime('%d/%m/%Y %H:%M')}}</td><td><div class="actions"><a class="btn" href="{{url_for('edit_user',uid=u.id)}}">Editar</a>{% if u.id != user.id %}<form method="post" action="{{url_for('delete_user',uid=u.id)}}" onsubmit="return confirm('¿Desactivar este usuario?');"><button class="btn" style="background:#a92d3c;border-color:#a92d3c">Eliminar</button></form>{% endif %}</div></td></tr>{% endfor %}</table></section></main><footer>Freddy Rojas · Cada registro conserva usuario y fecha/hora</footer><script src="/static/user_permissions.js?v=bank-role-1" defer></script></body></html>""",title="Usuarios",items=items)
 
 
 @app.route("/usuarios/<int:uid>/editar",methods=["GET","POST"])
@@ -1964,7 +1988,7 @@ def edit_user(uid):
                 flash("La nueva contraseña debe tener al menos 4 caracteres.")
                 return redirect(url_for("edit_user",uid=u.id))
             u.username=username; u.role=role
-            areas=[a for a in dict.fromkeys(areas+[role]) if a in AREAS]
+            areas=["banco"] if role=="banco" else [a for a in dict.fromkeys(areas+[role]) if a in AREAS and a!="banco"]
             if role=="admin": areas=list(AREAS.keys())
             u.areas=",".join(areas); u.active=active_value
             if password: u.password_hash=generate_password_hash(password)
@@ -1975,12 +1999,12 @@ def edit_user(uid):
     selected=(u.areas or "").split(",")
     return render_template_string(BASE+"""
     <section class="card" style="max-width:760px"><h2>Editar usuario: {{u.username}}</h2>
-    <form method="post"><label>Nombre de usuario</label><input name="username" value="{{u.username}}" required>
+    <form method="post" data-user-permissions><label>Nombre de usuario</label><input name="username" value="{{u.username}}" required>
     <label>Rol principal</label><select name="role">{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<option value="{{k}}" {% if u.role==k %}selected{% endif %}>{{v}}</option>{% endif %}{% endfor %}</select>
-    <label>Áreas permitidas</label>{% for k,v in AREAS.items() %}{% if k!='admin' or u.role=='admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}" {% if k in selected %}checked{% endif %}> {{v}}</label>{% endif %}{% endfor %}
-    <label>Nueva contraseña (opcional; dejar vacío para conservarla)</label><input type="password" name="password" minlength="4">
+    <div data-extra-areas><label>Áreas permitidas</label>{% for k,v in AREAS.items() if k!='banco' %}{% if k!='admin' or u.role=='admin' %}<label style="font-weight:400"><input style="width:auto" type="checkbox" name="areas" value="{{k}}" {% if k in selected %}checked{% endif %}> {{v}}</label>{% endif %}{% endfor %}
+    </div><label>Nueva contraseña (opcional; dejar vacío para conservarla)</label><input type="password" name="password" minlength="4">
     <label><input style="width:auto" type="checkbox" name="active" {% if u.active %}checked{% endif %}> Usuario activo</label>
-    <p class="actions"><button class="btn">Guardar cambios</button> <a class="btn" href="{{url_for('users')}}">Cancelar</a></p></form></section></main><footer>El Toro S.A.</footer></body></html>""",title="Editar usuario",u=u,selected=selected)
+    <p class="actions"><button class="btn">Guardar cambios</button> <a class="btn" href="{{url_for('users')}}">Cancelar</a></p></form></section></main><footer>El Toro S.A.</footer><script src="/static/user_permissions.js?v=bank-role-1" defer></script></body></html>""",title="Editar usuario",u=u,selected=selected)
 
 
 @app.post("/usuarios/<int:uid>/eliminar")

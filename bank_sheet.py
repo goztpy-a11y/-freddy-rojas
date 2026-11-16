@@ -79,7 +79,7 @@ def legacy_entries(accounts, currency):
             date = local_time(record.created_at).strftime('%Y-%m-%d')
         entries[aid].append(dict(key='record-' + str(record.id), date=date,
             description=record.title, amount=amount, source='Movimiento del sistema', editable=False,
-            detail_url=url_for('view_record', rid=record.id),
+            detail_url=None if current_user().role == 'banco' else url_for('view_record', rid=record.id),
             order=(date, record.created_at.isoformat(), 0, record.id)))
     return entries
 
